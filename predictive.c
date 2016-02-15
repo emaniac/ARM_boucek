@@ -20,6 +20,7 @@
 //#include "mpc.h"
 
 #define T 100	//prediction horizon, will sed all Ts?
+#define FLOAT_MAX 1000000
 
 // constants allocation
 const float pr_dt = 0.01148;
@@ -231,6 +232,7 @@ void Uv2u(matrix_float * Uv){
 }
 
 int sign(float num){
+	// returns the sign of number
 	if(num < 0){
 		return -1;
 	} else if (num > 0) {
@@ -384,8 +386,88 @@ void test_quadprog(){		// q
 		mountain_gradient(&A, &B, &u, &grad);
 
 		vector_float_print(&grad);
+}
 
+void test_constraint(){		// c
+
+
+	float x0 = 3;
+	float y0 = 4;
+	int radius = 1;
+	float k, q, sig;
+
+	usart_string_float_print("my_constraints_test, x0 = ", &x0);
+	usart_string_float_print("my_constraints_test, x0 = ", &y0);
+
+	my_constraint(&x0, &y0, &radius, &k, &q, &sig);
+
+	usart_string_float_print("k = ", &k);
+	usart_string_float_print("q = ", &q);
+	usart_string_float_print("sig=", &sig);
 
 }
+
+void reference(float * x){
+	*x = 6;
+}
+
+void my_constraint(float * x0, float * y0, int * radius, float * k, float * q, float * sig){
+//	function [k, q, q_g, bx, by, sig] = my_constraint(x0, y0, radius)
+//	    % return:
+//	    % half plain y < kx + q
+//	    % line is orthogonal to the vector [x0, y0]
+//	    %
+//	    % [bx, by] is point of intersection of the line and circle
+//	    % [k] is the slope
+//	    % [g] is the bias
+//	    % [g_q] is the bias for graph pourposes
+//
+//	    d = sqrt(x0^2 + y0^2);
+//	    bx = x0-radius*x0/d;
+//	    by = y0-radius*y0/d;
+//	    q_g = -bx^2 - by^2;
+//	    k = -x0/y0;
+//	    q = by - k*bx;
+//	    if y0 > 0
+//	        sig = 1;   % obsticle is before UAV
+//	    else
+//	        sig = -1;  % obsticle is behind UAV
+//	    end
+//	end
+
+	float fx0 = *(x0);				// crazy
+	float fy0 = *(y0);				// crazy
+	float fradius = *(radius);		// crazy
+
+	usart_string_float_print("my_constraints_float3, fx0 = ", &fx0);
+	usart_string_float_print("my_constraints_float3, fy0 = ", &fy0);
+
+	usart_string_int_print("my_constraints_int, x0 = ", x0);
+	usart_string_int_print("my_constraints_int, y0 = ", y0);
+
+	float d, bx, by;
+
+	d = sqrt(fx0*fx0+fy0*fy0);
+	bx = fx0-fradius*fx0/d;
+	by = fy0-fradius*fy0/d;
+
+	usart_string_float_print("my_constraints_float3, x0 = ", &x0);
+	usart_string_float_print("my_constraints_float3, y0 = ", &y0);
+
+	*k = -((float)fx0/(float)fy0);
+
+	usart_string_float_print("k2 = ", k);
+
+
+
+	if(y0 > 0){
+		*sig = 1;
+	} else {
+		*sig = -1;
+	}
+
+	*q = (by - (*k)*bx);
+}
+
 
 

@@ -147,6 +147,10 @@ void commTask(void *p) {
 				test_quadprog();
 				break;
 
+			case 99:			//c
+				test_constraint();
+				break;
+
 			default:			//blikani
 				led_toggle();
 				break;
