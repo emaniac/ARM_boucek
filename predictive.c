@@ -19,29 +19,152 @@
 #include "commTask.h"
 //#include "mpc.h"
 
-#define T 100	//prediction horizon, will sed all Ts?
+#define T 15	//prediction horizon, will sed all Ts?
 #define FLOAT_MAX 1000000
 
 // constants allocation
-const float pr_dt = 0.01148;
+#define pr_dt 0.01148
+#define pr_step 10
 
 
 // constant matrixes allocations
-const float pr_A[6*6];	//state space A
-const float pr_B[6*2];	//state space B
-float pr_Av[(6*T)*(T*T)];	//extended A
-float pr_Bv[(6*T)*(2*T)];	//extended B
-const float pr_H[];
-const float pr_Qv[];
-const float pr_Pv[];
-const float pr_Sv[];
-float pes = 7.15;
+
+//(float)(pow(0.9799, step))
+const float pr_A_arr[] = {1,pr_dt*pr_step,0,0,0,0, 0,1,pr_dt*pr_step,0,0,0, 0,0,(float)(pow(0.9799, pr_step)),0,0,0, 0,0,0,1,pr_dt*pr_step,0, 0,0,0,0,1,pr_dt*pr_step, 0,0,0,0,0,(float)(pow(0.9799, pr_step))};
+const float pr_B_arr[] = {0, 0, 5.0719e-5, 0, 0, 0, 0, 0, 0, 0, 0, 5.0719e-5};
+
+
+float pr_Av_arr[(6*T)*(6)];		//extended A
+float pr_Bv_arr[(6*T)*(2*T)];	//extended B
+float pr_H_arr[(2*T)*(2*T)];
+float pr_Qv_arr[6*T];			// diag
+float pr_Pv_arr[2*T];			// diag
+
+
+matrix_float pr_A = {6, 6, (float*) pr_A_arr, "pr_A"};	//ok
+matrix_float pr_B = {2, 6, (float*) pr_B_arr, "pr_B"};	//ok
+matrix_float pr_Av = {6, 6*T, (float*) pr_Av_arr, "pr_Av"};
+matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};
+matrix_float pr_H = {2*T, 2*T, (float*) pr_H_arr, "pr_H"};
+vector_float pr_Qv = {6*T, 0, (float*) pr_Qv_arr, "pr_Qv, diag vector"};
+vector_float pr_Pv = {2*T, 0, (float*) pr_Pv_arr, "pr_Pv, diag vector"};
+
 
 // allocation of variables with constant size that change
-float pr_Uv[(2*T)*1];	//input vector
-float pr_Ac[T*(2*T)];		//
-float pr_Bc[T*1];		//
-float pr_c[(2*T)*1];		//column vector
+float pr_Uv_arr[(2*T)];			//input vector
+float pr_Ac_arr[T*(2*T)];
+float pr_Bc_arr[T];
+float pr_c_arr[(2*T)];			//column vector
+
+vector_float pr_Uv = {2*T, 0, (float*) pr_Uv_arr, "pr_Uv"};
+vector_float pr_c  = {2*T, 0, (float*) pr_c_arr, "pr_c"};
+matrix_float pr_Ac = {2*T, T, (float*) pr_Ac_arr, "pr_Ac"};
+vector_float pr_Bc = {T, 0, (float*) pr_Bc_arr, "pr_Bc"};
+
+void set_matrixes(){	//s
+//	Ax=[1 dt 0;0 1 dt;0 0 0.9799^samples];  % A of state space x and its derivitives
+//	Bx=[0;0;5.0719e-5];                     % B of state space x and its derivitives
+//	A=[Ax zeros(3,3);zeros(3,3) Ax];        % A of joined systems x,y
+//	B=[Bx zeros(3,1);zeros(3,1) Bx];        % B of joined systems x,y
+//
+//	Av=createAv(A, lastTime);
+//	Bv=createBv(A, B, lastTime);
+//
+//	Q=zeros(6,6); Q(1,1)=q; Q(4,4)=q;
+//	P=[p 0;0 p];
+//	Pv = createQv(P, lastTime);
+//	S=zeros(6,6); S(1,1)=s; S(4,4)=s;
+//	Qv=createQv(Q, lastTime);
+//	Qv(end-5:end, end-5:end)=S;
+//	Hv=Bv'*Qv*Bv+Pv;
+
+//	pr_A_arr = {1, pr_dt};//, 0, 0, 1, pr_dt, 0, 0, pow((double)0.9799, (double)pr_step)};
+	const float X3_arr[8];
+	matrix_float X3 = {2, 4, (float*) X3_arr, "X"};
+	matrix_float_set_all(&X3, 7);
+
+	const float Y_arr[] = {1, 2, 3, 4};
+	matrix_float Y = {2, 2, (float*) Y_arr, "Y"};
+	matrix_float_print(&Y);
+	matrix_float_set_submatrix(&X3, &Y, 1, 4);
+
+	matrix_float_print(&X3);
+	usart4PutString("ending set_matrixes()\n\r");
+
+}
+
+void create_Bv(){
+//	[x, y]=size(A);
+//	Av=zeros(siz*x,y);
+//	for i=1:siz        %line
+//	    Av(((i-1)*x+1):x*i,:)=A^i;
+//	end
+//	matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};
+
+	int X = pr_Bv.width;
+	int Y = pr_Bv.height;
+
+	int pos_y;
+
+	float A_tmp_arr[6*6], tmp;
+	matrix_float A_tmp = {6, 6, (float*) A_tmp_arr, "A_tmp"};
+	float A_cp_arr[6*6], tmp2;
+	matrix_float A_cp = {6, 6, (float*) A_cp_arr, "A_cp"};
+	matrix_float_copy(&A_tmp, &pr_A);
+	matrix_float_copy(&A_cp, &pr_A);
+
+//	int iX, iY, x, y, i;
+//	for(iX = 0; iX < T; iX++){
+//		for(iY = 0; iY < Y; iY++){
+//
+//
+//
+//
+//
+//			for(y = 1; y <= 6; y++){
+//				for(x = 1; x <= 6; x++){
+//					tmp = matrix_float_get(&A_tmp, y, x);
+//					matrix_float_set(&pr_Av, (i*6)+y, x, tmp);
+//				}
+//			}
+//			matrix_float_mul(&pr_A, &A_cp, &A_tmp);
+//			matrix_float_copy(&A_cp, &A_tmp);
+//		}
+//	}
+//	matrix_float_print(&pr_Av);
+}
+
+void create_Av(){
+	// tested, working
+//	[x, y]=size(A);
+//	Av=zeros(siz*x,y);
+//	for i=1:siz        %line
+//	    Av(((i-1)*x+1):x*i,:)=A^i;
+//	end
+
+	int X = pr_Av.width;
+	int Y = pr_Av.height;
+
+	float A_tmp_arr[6*6], tmp;
+	matrix_float A_tmp = {6, 6, (float*) A_tmp_arr, "A_tmp"};
+	float A_cp_arr[6*6], tmp2;
+	matrix_float A_cp = {6, 6, (float*) A_cp_arr, "A_cp"};
+	matrix_float_copy(&A_tmp, &pr_A);
+	matrix_float_copy(&A_cp, &pr_A);
+
+	int x, y, i;
+	for(i = 0; i < T; i++){
+		for(y = 1; y <= 6; y++){
+			for(x = 1; x <= 6; x++){
+				tmp = matrix_float_get(&A_tmp, y, x);
+				matrix_float_set(&pr_Av, (i*6)+y, x, tmp);
+			}
+		}
+		matrix_float_mul(&pr_A, &A_cp, &A_tmp);
+		matrix_float_copy(&A_cp, &A_tmp);
+	}
+	matrix_float_print(&pr_Av);
+}
 
 
 void string_print(const char * a) {
@@ -391,6 +514,9 @@ void test_quadprog(){		// q
 void test_constraint(){		// c
 
 
+
+
+	return;
 	float x0 = 3;
 	float y0 = 4;
 	int radius = 1;
@@ -435,6 +561,8 @@ void my_constraint(float * x0, float * y0, int * radius, float * k, float * q, f
 //	    end
 //	end
 
+	float d, bx, by;
+
 	float fx0 = *(x0);				// crazy
 	float fy0 = *(y0);				// crazy
 	float fradius = *(radius);		// crazy
@@ -444,8 +572,6 @@ void my_constraint(float * x0, float * y0, int * radius, float * k, float * q, f
 
 	usart_string_int_print("my_constraints_int, x0 = ", x0);
 	usart_string_int_print("my_constraints_int, y0 = ", y0);
-
-	float d, bx, by;
 
 	d = sqrt(fx0*fx0+fy0*fy0);
 	bx = fx0-fradius*fx0/d;
@@ -457,8 +583,6 @@ void my_constraint(float * x0, float * y0, int * radius, float * k, float * q, f
 	*k = -((float)fx0/(float)fy0);
 
 	usart_string_float_print("k2 = ", k);
-
-
 
 	if(y0 > 0){
 		*sig = 1;
