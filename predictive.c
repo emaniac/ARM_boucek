@@ -19,7 +19,7 @@
 #include "commTask.h"
 //#include "mpc.h"
 
-#define T 15	//prediction horizon, will sed all Ts?
+#define T 5	//prediction horizon, will sed all Ts?, 15
 #define FLOAT_MAX 1000000
 
 // constants allocation
@@ -31,7 +31,7 @@
 
 //(float)(pow(0.9799, step))
 const float pr_A_arr[] = {1,pr_dt*pr_step,0,0,0,0, 0,1,pr_dt*pr_step,0,0,0, 0,0,(float)(pow(0.9799, pr_step)),0,0,0, 0,0,0,1,pr_dt*pr_step,0, 0,0,0,0,1,pr_dt*pr_step, 0,0,0,0,0,(float)(pow(0.9799, pr_step))};
-const float pr_B_arr[] = {0, 0, 5.0719e-5, 0, 0, 0, 0, 0, 0, 0, 0, 5.0719e-5};
+const float pr_B_arr[] = {0, 0, 0, 0, 5.0719e+0, 0, 0, 0, 0, 0, 0, 5.0719e+0};	// ERROR!!!! needs to be edited to 'e-5'
 
 
 float pr_Av_arr[(6*T)*(6)];		//extended A
@@ -79,21 +79,23 @@ void set_matrixes(){	//s
 //	Hv=Bv'*Qv*Bv+Pv;
 
 //	pr_A_arr = {1, pr_dt};//, 0, 0, 1, pr_dt, 0, 0, pow((double)0.9799, (double)pr_step)};
-	const float X3_arr[8];
-	matrix_float X3 = {2, 4, (float*) X3_arr, "X"};
-	matrix_float_set_all(&X3, 7);
-
-	const float Y_arr[] = {1, 2, 3, 4};
-	matrix_float Y = {2, 2, (float*) Y_arr, "Y"};
-	matrix_float_print(&Y);
-	matrix_float_set_submatrix(&X3, &Y, 1, 4);
-
-	matrix_float_print(&X3);
-//	usart4PutString("ending set_matrixes()\n\r");
-
+//	const float X3_arr[8];
+//	matrix_float X3 = {2, 4, (float*) X3_arr, "X"};
+//	matrix_float_set_all(&X3, 7);
+//
+//	const float Y_arr[] = {1, 2, 3, 4};
+//	matrix_float Y = {2, 2, (float*) Y_arr, "Y"};
+//	matrix_float_print(&Y);
+//	matrix_float_set_submatrix(&X3, &Y, 1, 4);
+//
+//	matrix_float_print(&X3);
+	create_Bv();
+	matrix_float_print(&pr_Bv);
+	usart4PutString("ending set_matrixes()\n\r");
 }
 
 void create_Bv(){
+	// done, working
 //	[x, y]=size(A);
 //	Av=zeros(siz*x,y);
 //	for i=1:siz        %line
@@ -103,44 +105,35 @@ void create_Bv(){
 
 	int X = pr_Bv.width;
 	int Y = pr_Bv.height;
-
 	int pos_y;
 
 	float A_tmp_arr[6*6], tmp;
+	float A_cp_arr[6*6];
+	float A_b_arr[6*2];
 	matrix_float A_tmp = {6, 6, (float*) A_tmp_arr, "A_tmp"};
-	float A_cp_arr[6*6], tmp2;
 	matrix_float A_cp = {6, 6, (float*) A_cp_arr, "A_cp"};
-	matrix_float_copy(&A_tmp, &pr_A);
-	matrix_float_copy(&A_cp, &pr_A);
+	matrix_float A_b = {2, 6, (float*) A_b_arr, "A_b"};
 
-//	int iX, iY, x, y, i;
-//	for(iX = 0; iX < T; iX++){
-//		for(iY = 0; iY < Y; iY++){
-//
-//
-//
-//
-//
-//			for(y = 1; y <= 6; y++){
-//				for(x = 1; x <= 6; x++){
-//					tmp = matrix_float_get(&A_tmp, y, x);
-//					matrix_float_set(&pr_Av, (i*6)+y, x, tmp);
-//				}
-//			}
-//			matrix_float_mul(&pr_A, &A_cp, &A_tmp);
-//			matrix_float_copy(&A_cp, &A_tmp);
-//		}
-//	}
-//	matrix_float_print(&pr_Av);
+	matrix_float_set_zero(&pr_Av);
+
+	int x, y;
+	for(x = 0; x < T; x++){
+		matrix_float_set_identity(&A_tmp);
+		for(y = x; y < T; y++){
+			if(x == y){
+				matrix_float_set_submatrix(&pr_Bv, &pr_B, x*2+1, y*6+1);
+				continue;
+			}
+			matrix_float_mul(&A_tmp, &pr_A, &A_cp);
+			matrix_float_copy(&A_tmp, &A_cp);
+			matrix_float_mul(&A_tmp, &pr_B, &A_b);
+			matrix_float_set_submatrix(&pr_Bv, &A_b, x*2+1, y*6+1);
+		}
+	}
 }
 
 void create_Av(){
 	// tested, working
-//	[x, y]=size(A);
-//	Av=zeros(siz*x,y);
-//	for i=1:siz        %line
-//	    Av(((i-1)*x+1):x*i,:)=A^i;
-//	end
 
 	int X = pr_Av.width;
 	int Y = pr_Av.height;
@@ -154,16 +147,10 @@ void create_Av(){
 
 	int x, y, i;
 	for(i = 0; i < T; i++){
-		for(y = 1; y <= 6; y++){
-			for(x = 1; x <= 6; x++){
-				tmp = matrix_float_get(&A_tmp, y, x);
-				matrix_float_set(&pr_Av, (i*6)+y, x, tmp);
-			}
-		}
+		matrix_float_set_submatrix(&pr_Av, &A_tmp, 1, i*6+1);
 		matrix_float_mul(&pr_A, &A_cp, &A_tmp);
 		matrix_float_copy(&A_cp, &A_tmp);
 	}
-	matrix_float_print(&pr_Av);
 }
 
 
