@@ -89,7 +89,7 @@ void set_matrixes(){	//s
 	matrix_float_set_submatrix(&X3, &Y, 1, 4);
 
 	matrix_float_print(&X3);
-	usart4PutString("ending set_matrixes()\n\r");
+//	usart4PutString("ending set_matrixes()\n\r");
 
 }
 
