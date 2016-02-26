@@ -7,7 +7,7 @@
 /* 	To do:
  *
  *  prejmenovat fci na pring a predavat hodnotu
- *
+ *  ctvrtek: vygenerovat vsechny matice a dat je do C.
  *
  */
 
@@ -19,64 +19,160 @@
 #include "commTask.h"
 //#include "mpc.h"
 
-#define T 5	//prediction horizon, will sed all Ts?, 15
+//#define T 4	//prediction horizon, will sed all Ts?, 15
 #define FLOAT_MAX 1000000
 
-// constants allocation
+// constants
 #define pr_dt 0.01148
 #define pr_step 10
+#define pr_q 300
+#define pr_p 1e-6
+
+// constants for testing
+float obsticle_x = 0;
+float obsticle_y = 5;
+float obsticle_radius = 1.5;
+float final_x = 10;
+float final_y = 7;
 
 
 // constant matrixes allocations
 
-//(float)(pow(0.9799, step))
-const float pr_A_arr[] = {1,pr_dt*pr_step,0,0,0,0, 0,1,pr_dt*pr_step,0,0,0, 0,0,(float)(pow(0.9799, pr_step)),0,0,0, 0,0,0,1,pr_dt*pr_step,0, 0,0,0,0,1,pr_dt*pr_step, 0,0,0,0,0,(float)(pow(0.9799, pr_step))};
-const float pr_B_arr[] = {0, 0, 0, 0, 5.0719e+0, 0, 0, 0, 0, 0, 0, 5.0719e+0};	// ERROR!!!! needs to be edited to 'e-5'
+const float pr_A_arr[6*6] = {1,pr_dt*pr_step,0,0,0,0, 0,1,pr_dt*pr_step,0,0,0, 0,0,(float)(pow(0.9799, pr_step)),0,0,0, 0,0,0,1,pr_dt*pr_step,0, 0,0,0,0,1,pr_dt*pr_step, 0,0,0,0,0,(float)(pow(0.9799, pr_step))};
+const float pr_B_arr[6*2] = {0, 0, 0, 0, 5.0719e+0, 0, 0, 0, 0, 0, 0, 5.0719e+0};	// ERROR!!!! needs to be edited to 'e-5'
+
+/*	in predictiveMatrixes.c
+const float pr_block_arr[T] = {1, 2, 5, 10};	//has to fit
+const float pr_Av_arr[(6*T)*(6)];				//extended A
+const float pr_Bv_arr[(6*T)*(2*T)];				//extended B
+const float pr_Hv_arr[(2*T)*(2*T)];
+const float pr_Qv_arr[6*T*6*T];
+const float pr_Pv_arr[2*T*2*T];					// diag
+*/
+
+const matrix_float pr_A  = {  6,   6, (float*) pr_A_arr, "pr_A"};		//set
+const matrix_float pr_B  = {  2,   6, (float*) pr_B_arr, "pr_B"};		//set
 
 
-float pr_Av_arr[(6*T)*(6)];		//extended A
-float pr_Bv_arr[(6*T)*(2*T)];	//extended B
-float pr_H_arr[(2*T)*(2*T)];
-float pr_Qv_arr[6*T];			// diag
-float pr_Pv_arr[2*T];			// diag
+const vector_float pr_block = {T,  1, (float*) pr_block_arr, "pr_block, which time predictions are computed with."};
+const matrix_float pr_Av = {  6, 6*T, (float*) pr_Av_arr, "pr_Av"};	// in set_matrixes(), tested
+const matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};	// in set_matrixes(), tested
+const matrix_float pr_Hv = {2*T, 2*T, (float*) pr_Hv_arr, "pr_H"};	// done in set_matrixes(), nto tested
+const vector_float pr_Pv = {2*T,   0, (float*) pr_Pv_arr, "pr_Pv, diag vector"};		// done in set_matrixes(), nto tested
+const matrix_float pr_Qv = {6*T, 6*T, (float*) pr_Qv_arr, "pr_Qv"};
 
 
-matrix_float pr_A = {6, 6, (float*) pr_A_arr, "pr_A"};	//ok
-matrix_float pr_B = {2, 6, (float*) pr_B_arr, "pr_B"};	//ok
-matrix_float pr_Av = {6, 6*T, (float*) pr_Av_arr, "pr_Av"};
-matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};
-matrix_float pr_H = {2*T, 2*T, (float*) pr_H_arr, "pr_H"};
-vector_float pr_Qv = {6*T, 0, (float*) pr_Qv_arr, "pr_Qv, diag vector"};
-vector_float pr_Pv = {2*T, 0, (float*) pr_Pv_arr, "pr_Pv, diag vector"};
+//	dynamic matrix allocations
 
-
-// allocation of variables with constant size that change
 float pr_Uv_arr[(2*T)];			//input vector
 float pr_Ac_arr[T*(2*T)];
 float pr_Bc_arr[T];
-float pr_c_arr[(2*T)];			//column vector
+float pr_c_arr [(2*T)];			//column vector
+float pr_x0_arr[6];
+float pr_Tr_uav_arr[2*T];		// computed trajectory
+float pr_Tr_des_arr[2*T];		// desired trajectory
 
 vector_float pr_Uv = {2*T, 0, (float*) pr_Uv_arr, "pr_Uv"};
-vector_float pr_c  = {2*T, 0, (float*) pr_c_arr, "pr_c"};
+vector_float pr_c  = {2*T, 0, (float*) pr_c_arr,  "pr_c"};
 matrix_float pr_Ac = {2*T, T, (float*) pr_Ac_arr, "pr_Ac"};
-vector_float pr_Bc = {T, 0, (float*) pr_Bc_arr, "pr_Bc"};
+vector_float pr_Bc = {  T, 0, (float*) pr_Bc_arr, "pr_Bc"};
+vector_float pr_x0 = {  6, 0, (float*) pr_x0_arr, "pr_x0"};
+matrix_float pr_Tr_des={6,   T, (float*) pr_Tr_des_arr, "pr_Tr_des - dsired trajectory"};
+matrix_float pr_Tr_uav={6,   T, (float*) pr_Tr_uav_arr, "pr_Tr_uav - UAV's trajectory"};
+
+float Qv_Bv_t_arr[6*T*6*T];
+matrix_float Qv_Bv_t = {6*T, 6*T, (float*) Qv_Bv_t_arr, "Qv_Bv_t"};
+
+
+void run_simulation(){
+
+	int i;
+	create_Av();
+	create_Bv();
+	vector_float_set_zero(&pr_x0);
+
+	// create trajectory, done, not tested
+	matrix_float_set_zero(&pr_Tr_des);
+	for(i = 1; i <= T; i++){
+		matrix_float_set(&pr_Tr_des, i, 1, final_x*i/T);
+		matrix_float_set(&pr_Tr_des, i, 4, final_y*i/T);
+	}
+	matrix_float_print(&pr_Tr_des);
+
+	/* CONSTRAINTS */
+
+	float Acx_arr[6*T];
+	float Acy_arr[6*T];
+	float Bcx_arr[T];
+	float Bcy_arr[T];
+	float Acy_x0_att[T];
+
+	matrix_float Acx = {6, T, (float*) Acx_arr, "Acx"};
+	matrix_float Acy = {6, T, (float*) Acy_arr, "Acy"};
+	matrix_float Bcx = {1, T, (float*) Bcx_arr, "Bcx"};
+	matrix_float Bcy = {1, T, (float*) Bcy_arr, "Bcy"};
+	vector_float Acy_x0 = {T, 0, (float*) Acy_x0_arr, "Acy_x0"};
+
+	constraint_matrixes(&pr_Av, &Acx, &Acy);
+	constraint_matrixes(&pr_Bv, &Bcx, &Bcy);
+
+
+	float k, q, sig;
+	my_constraint(&obsticle_x, &obsticle_y, &obsticle_radius, &k, &q, &sig);
+
+
+//	Ac = sig*(-k*Bcx + Bcy);
+//	Bc = sig*(-k*Acx*x0 + Acy*x0 - q);, done, not tested
+
+	matrix_float_times(&Bcx, -k);
+	matrix_float_add(&Bcx, Bcy);
+	if(sig != 1) matrix_float_times(&Bcx, sig);
+
+	matrix_float_mul_vec_right(&Acx, &pr_x0, &pr_Bc);
+	vector_float_times(&pr_Bc, -k);
+	matrix_float_mul_vec_right(&Acy, &x0, &Acy_x0);
+	vector_float_add(&Bc, &Acy_x0);
+	vector_float_set_all(&Acy_x0, -q);
+	vector_float_add(&pr_Bc, &Acy_x0);
+	if(sig != 1) vector_float_times(&pr_Bc, sig);
+
+	/* TRAJECTORY */
+
+//	Tr_desired=reshape(Tr_desired',lastTime*6, 1)
+	float Tr_cp_arr[6*T];
+	matrix_float Tr_cp = {T, 6, (float*) Tr_cp_arr, "Tr_cp"};
+	matrix_float_transpose(pr_Tr_des, Tr_cp);
+	vector_float Tr_vec = {T*6, 0, (float*) Tr_cp_arr, "Tr_vec - reshaped pr_Tr_des"};
+
+//  c = (Qv*Bv)'*(Av*x0-Tr_desired);
+	float Av_x0_arr[6*T];
+	vector_float Av_x0 = {6*T, 0, (float*) Av_x0_arr, "Av_x0"};
+	matrix_float_mul_vec_right(&Av, &x0, &Av_x0);
+	vector_float_subtract(Av_x0, Tr_vec);
+
+// (Qv*Bv)'*...
+	float tmp;
+	int x, y;
+	for(y = 1; y <= 6*T; y++){
+		if(y % 3 != 0) continue;
+		for(x = 0; x <= 6*T; x++){
+			tmp = matrix_float_get(&pr_Bv, y, x)*pr_q;
+			matrix_float_set(&Qv_Bv_t, x, y, tmp);
+		}
+	}
+
+
+
+
+}
+
+
+
+
 
 void set_matrixes(){	//s
-//	Ax=[1 dt 0;0 1 dt;0 0 0.9799^samples];  % A of state space x and its derivitives
-//	Bx=[0;0;5.0719e-5];                     % B of state space x and its derivitives
-//	A=[Ax zeros(3,3);zeros(3,3) Ax];        % A of joined systems x,y
-//	B=[Bx zeros(3,1);zeros(3,1) Bx];        % B of joined systems x,y
-//
-//	Av=createAv(A, lastTime);
-//	Bv=createBv(A, B, lastTime);
-//
-//	Q=zeros(6,6); Q(1,1)=q; Q(4,4)=q;
-//	P=[p 0;0 p];
-//	Pv = createQv(P, lastTime);
-//	S=zeros(6,6); S(1,1)=s; S(4,4)=s;
-//	Qv=createQv(Q, lastTime);
-//	Qv(end-5:end, end-5:end)=S;
-//	Hv=Bv'*Qv*Bv+Pv;
+
+
 
 //	pr_A_arr = {1, pr_dt};//, 0, 0, 1, pr_dt, 0, 0, pow((double)0.9799, (double)pr_step)};
 //	const float X3_arr[8];
@@ -89,9 +185,44 @@ void set_matrixes(){	//s
 //	matrix_float_set_submatrix(&X3, &Y, 1, 4);
 //
 //	matrix_float_print(&X3);
+
+	/*
+	create_Av();
 	create_Bv();
-	matrix_float_print(&pr_Bv);
-	usart4PutString("ending set_matrixes()\n\r");
+	*/
+
+	// SETTING Qv //
+
+	matrix_float_set_zero(pr_Qv);
+	int i;
+	for(i = 1; i <= T; i++){
+		if(i%3 == 0) matrix_float_set(&pr_Qv, i, i, pr_q);
+	}
+
+	matrix_float_print(&Qv);
+
+	// SETTING Pv //
+	float Pv_arr[6*6];
+	matrix_float Pv = {6, 6, (float*) Pv_arr, "Pv"};
+	matrix_float_set_zero(&Pv);
+
+	for(i = 1; i <= 6; i++){
+		matrix_float_set(&Pv, i, i, pr_p);
+	}
+
+	// SETTING Hv, Hv=Bv'*Qv*Bv+Pv; //
+	float Qv_Bv_arr[T*6*6];
+	matrix_float Qv_Bv = {6, T*3, (float*) Qv_Bv_arr, "Qv_Bv"};
+	float Bv_tr_arr[(6*T)*(2*T)];
+	matrix_float Bv_tr = {6*T, 2*T, (float*) Bv_tr_arr, "Bv_tr"};
+	matrix_float_transpose(&pr_Bv, &Bv_tr);
+
+	matrix_float_mul(&Qv, &pr_Bv, &Qv_Bv);
+	matrix_float_mul(&Bv_tr, &Qv_Bv, &pr_Hv);
+	matrix_float_mul(&Bv_tr, &Qv_Bv, &pr_Hv);
+	matrix_float_add(&Hv, &Pv);			// Hv=Bv'*Qv*Bv+Pv;, not tested;
+
+	usart4PutString("Ending set_matrixes()\n\r");
 }
 
 void create_Bv(){
@@ -160,18 +291,22 @@ void string_print(const char * a) {
 
 
 
-void test_predictive(){
+void test_predictive(){		//p
 	usart4PutString("Predictive class running 2.\n\r");
 //	test_check();
 	float B_arr[] = {50, 60, 70};
 	float u_arr[] = {4, 5, 6};
 	float V_arr[] = {1, 2, 3, 4};
-	float A_arr[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+	float A_arr[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 	float Get_test_arr[] = {9, 9, 9};
 
-	matrix_float A = {2, 2, (float*) &A_arr, "A_test_predictive"};
+	matrix_float A = {3, 3, (float*) &A_arr, "A_test_predictive"};
 	vector_float vf = {4, 0, (float*) &V_arr, "Vector with orientation 1"};
 	vector_float Get_test = {3, 0, (float*) &Get_test_arr, "Get Test, should not be 9,9,9"};
+
+	matrix_float_print(&A);
+	matrix_float_add_diag(&A, &Get_test);
+	matrix_float_print(&A);
 
 
 
