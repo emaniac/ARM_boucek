@@ -8,6 +8,8 @@
 #include "commTask.h"
 #include "kalmanTask.h"
 #include "mpcTask.h"
+
+/*
 #define T 100
 
 // constants allocation
@@ -31,7 +33,7 @@ float pr_Ac[T*(2*T)];		//
 float pr_Bc[T*1];		//
 float pr_c[(2*T)*1];		//column vector
 
-
+*/
 
 
 

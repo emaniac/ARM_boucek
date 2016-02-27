@@ -97,14 +97,14 @@ void commTask(void *p) {
 	/* -------------------------------------------------------------------- */
 	/*	Needed for receiving from xMega										*/
 	/* -------------------------------------------------------------------- */
-	char payloadSize = 0;
+//	char payloadSize = 0;
 	char messageBuffer[XMEGA_BUFFER_SIZE];
 	char inChar;
-	int bytesReceived;
+//	int bytesReceived;
 	char messageReceived = 0;
-	char receivingMessage = 0;
-	int receiverState = 0;
-	char crcIn = 0;
+//	char receivingMessage = 0;
+//	int receiverState = 0;
+//	char crcIn = 0;
 
 	velkaMatice.width = 10;
 	velkaMatice.height = 10;
@@ -121,7 +121,6 @@ void commTask(void *p) {
 		/*	Receive char from usart												*/
 		/* -------------------------------------------------------------------- */
 		if (xQueueReceive(usartRxQueue, &inChar, 0)) {
-			float num_honza = 3;
 
 			switch(inChar){
 
@@ -136,23 +135,23 @@ void commTask(void *p) {
 				break;
 
 			case 116:			//t
-				test_check();
+//				test_check();
 				break;
 
 			case 110:			//n
 //				usart_string_float_print("usart print printing 3 : ", num_honza);	//test of usart_print()
 				break;
 
-			case 113:
-				test_quadprog();
+			case 114:			//r
+				run_simulation();
 				break;
 
 			case 99:			//c
-				test_constraint();
+//				test_constraint();
 				break;
 
 			case 115: 			//s
-				set_matrixes();
+//				set_matrixes();
 				break;
 
 			default:			//blikani
