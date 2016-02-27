@@ -17,6 +17,7 @@
 
 #include "predictive.h"
 #include "commTask.h"
+#include "predictiveMatrices.h"
 //#include "mpc.h"
 
 //#define T 4	//prediction horizon, will sed all Ts?, 15
@@ -34,24 +35,28 @@ float obsticle_y = 5;
 float obsticle_radius = 1.5;
 float final_x = 10;
 float final_y = 7;
+int iterations = 200;
+int step = 20;
+
 
 
 // constant matrixes allocations
 
+/*	in predictiveMatrixes.c
 const float pr_A_arr[6*6] = {1,pr_dt*pr_step,0,0,0,0, 0,1,pr_dt*pr_step,0,0,0, 0,0,(float)(pow(0.9799, pr_step)),0,0,0, 0,0,0,1,pr_dt*pr_step,0, 0,0,0,0,1,pr_dt*pr_step, 0,0,0,0,0,(float)(pow(0.9799, pr_step))};
 const float pr_B_arr[6*2] = {0, 0, 0, 0, 5.0719e+0, 0, 0, 0, 0, 0, 0, 5.0719e+0};	// ERROR!!!! needs to be edited to 'e-5'
-
-/*	in predictiveMatrixes.c
 const float pr_block_arr[T] = {1, 2, 5, 10};	//has to fit
 const float pr_Av_arr[(6*T)*(6)];				//extended A
 const float pr_Bv_arr[(6*T)*(2*T)];				//extended B
 const float pr_Hv_arr[(2*T)*(2*T)];
 const float pr_Qv_arr[6*T*6*T];
 const float pr_Pv_arr[2*T*2*T];					// diag
+const float Qv_Bv_t_arr[6*T*6*T];
 */
 
 const matrix_float pr_A  = {  6,   6, (float*) pr_A_arr, "pr_A"};		//set
 const matrix_float pr_B  = {  2,   6, (float*) pr_B_arr, "pr_B"};		//set
+const matrix_float pr_test = {2, 2, (float*) pr_test_arr, "pt_test"};
 
 
 const vector_float pr_block = {T,  1, (float*) pr_block_arr, "pr_block, which time predictions are computed with."};
@@ -60,7 +65,7 @@ const matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};	// in set_ma
 const matrix_float pr_Hv = {2*T, 2*T, (float*) pr_Hv_arr, "pr_H"};	// done in set_matrixes(), nto tested
 const vector_float pr_Pv = {2*T,   0, (float*) pr_Pv_arr, "pr_Pv, diag vector"};		// done in set_matrixes(), nto tested
 const matrix_float pr_Qv = {6*T, 6*T, (float*) pr_Qv_arr, "pr_Qv"};
-
+const matrix_float Qv_Bv_t={6*T, 6*T, (float*) Qv_Bv_t_arr, "Qv_Bv_t - (Qv*Bv)'"};
 
 //	dynamic matrix allocations
 
@@ -80,15 +85,26 @@ vector_float pr_x0 = {  6, 0, (float*) pr_x0_arr, "pr_x0"};
 matrix_float pr_Tr_des={6,   T, (float*) pr_Tr_des_arr, "pr_Tr_des - dsired trajectory"};
 matrix_float pr_Tr_uav={6,   T, (float*) pr_Tr_uav_arr, "pr_Tr_uav - UAV's trajectory"};
 
-float Qv_Bv_t_arr[6*T*6*T];
-matrix_float Qv_Bv_t = {6*T, 6*T, (float*) Qv_Bv_t_arr, "Qv_Bv_t"};
+float pr_Acx_arr[6*T];
+float pr_Acy_arr[6*T];
+float pr_Bcx_arr[T];
+float pr_Bcy_arr[T];
+float pr_Acy_x0_att[T];
+
+matrix_float pr_Acx = {6, T, (float*) pr_Acx_arr, "pr_Acx"};
+matrix_float pr_Acy = {6, T, (float*) pr_Acy_arr, "pr_Acy"};
+matrix_float pr_Bcx = {2*T, T, (float*) pr_Bcx_arr, "pr_Bcx"};
+matrix_float pr_Bcy = {2*T, T, (float*) pr_Bcy_arr, "pr_Bcy"};
+
+float pr_Acy_x0_arr[T];
+vector_float pr_Acy_x0 = {T, 0, (float*) pr_Acy_x0_arr, "pr_Acy_x0"};
+float pr_Av_x0_arr[6*T];
+vector_float pr_Av_x0 = {6*T, 0, (float*) pr_Av_x0_arr, "Av_x0"};
 
 
 void run_simulation(){
-
+/*
 	int i;
-	create_Av();
-	create_Bv();
 	vector_float_set_zero(&pr_x0);
 
 	// create trajectory, done, not tested
@@ -97,24 +113,12 @@ void run_simulation(){
 		matrix_float_set(&pr_Tr_des, i, 1, final_x*i/T);
 		matrix_float_set(&pr_Tr_des, i, 4, final_y*i/T);
 	}
-	matrix_float_print(&pr_Tr_des);
 
-	/* CONSTRAINTS */
+	*//* CONSTRAINTS *//*
 
-	float Acx_arr[6*T];
-	float Acy_arr[6*T];
-	float Bcx_arr[T];
-	float Bcy_arr[T];
-	float Acy_x0_att[T];
 
-	matrix_float Acx = {6, T, (float*) Acx_arr, "Acx"};
-	matrix_float Acy = {6, T, (float*) Acy_arr, "Acy"};
-	matrix_float Bcx = {1, T, (float*) Bcx_arr, "Bcx"};
-	matrix_float Bcy = {1, T, (float*) Bcy_arr, "Bcy"};
-	vector_float Acy_x0 = {T, 0, (float*) Acy_x0_arr, "Acy_x0"};
-
-	constraint_matrixes(&pr_Av, &Acx, &Acy);
-	constraint_matrixes(&pr_Bv, &Bcx, &Bcy);
+	constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
+	constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
 
 
 	float k, q, sig;
@@ -124,106 +128,39 @@ void run_simulation(){
 //	Ac = sig*(-k*Bcx + Bcy);
 //	Bc = sig*(-k*Acx*x0 + Acy*x0 - q);, done, not tested
 
-	matrix_float_times(&Bcx, -k);
-	matrix_float_add(&Bcx, Bcy);
-	if(sig != 1) matrix_float_times(&Bcx, sig);
+	matrix_float_times(&pr_Bcx, -k);
+	matrix_float_add(&pr_Bcx, &pr_Bcy);
+	if(sig != 1) matrix_float_times(&pr_Bcx, sig);
+	matrix_float_copy(&pr_Ac, &pr_Bcx);
 
-	matrix_float_mul_vec_right(&Acx, &pr_x0, &pr_Bc);
+	matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &pr_Bc);
 	vector_float_times(&pr_Bc, -k);
-	matrix_float_mul_vec_right(&Acy, &x0, &Acy_x0);
-	vector_float_add(&Bc, &Acy_x0);
-	vector_float_set_all(&Acy_x0, -q);
-	vector_float_add(&pr_Bc, &Acy_x0);
+	matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
+	vector_float_add(&pr_Bc, &pr_Acy_x0);
+	vector_float_set_all(&pr_Acy_x0, -q);
+	vector_float_add(&pr_Bc, &pr_Acy_x0);
 	if(sig != 1) vector_float_times(&pr_Bc, sig);
 
-	/* TRAJECTORY */
+	*//* TRAJECTORY *//*
 
 //	Tr_desired=reshape(Tr_desired',lastTime*6, 1)
 	float Tr_cp_arr[6*T];
 	matrix_float Tr_cp = {T, 6, (float*) Tr_cp_arr, "Tr_cp"};
-	matrix_float_transpose(pr_Tr_des, Tr_cp);
+	matrix_float_transpose(&pr_Tr_des, &Tr_cp);
 	vector_float Tr_vec = {T*6, 0, (float*) Tr_cp_arr, "Tr_vec - reshaped pr_Tr_des"};
 
 //  c = (Qv*Bv)'*(Av*x0-Tr_desired);
-	float Av_x0_arr[6*T];
-	vector_float Av_x0 = {6*T, 0, (float*) Av_x0_arr, "Av_x0"};
-	matrix_float_mul_vec_right(&Av, &x0, &Av_x0);
-	vector_float_subtract(Av_x0, Tr_vec);
+	matrix_float_mul_vec_right(&pr_Av, &pr_x0, &pr_Av_x0);
+	vector_float_subtract(&pr_Av_x0, &Tr_vec);
+	matrix_float_mul_vec_right(&Qv_Bv_t, &pr_Av_x0, &pr_c);
 
-// (Qv*Bv)'*...
-	float tmp;
-	int x, y;
-	for(y = 1; y <= 6*T; y++){
-		if(y % 3 != 0) continue;
-		for(x = 0; x <= 6*T; x++){
-			tmp = matrix_float_get(&pr_Bv, y, x)*pr_q;
-			matrix_float_set(&Qv_Bv_t, x, y, tmp);
-		}
-	}
-
-
+	my_quadprog(&pr_Hv, &pr_c, &pr_Ac, &pr_Bc, &pr_Uv, iterations, step);
+*/
 
 
 }
 
 
-
-
-
-void set_matrixes(){	//s
-
-
-
-//	pr_A_arr = {1, pr_dt};//, 0, 0, 1, pr_dt, 0, 0, pow((double)0.9799, (double)pr_step)};
-//	const float X3_arr[8];
-//	matrix_float X3 = {2, 4, (float*) X3_arr, "X"};
-//	matrix_float_set_all(&X3, 7);
-//
-//	const float Y_arr[] = {1, 2, 3, 4};
-//	matrix_float Y = {2, 2, (float*) Y_arr, "Y"};
-//	matrix_float_print(&Y);
-//	matrix_float_set_submatrix(&X3, &Y, 1, 4);
-//
-//	matrix_float_print(&X3);
-
-	/*
-	create_Av();
-	create_Bv();
-	*/
-
-	// SETTING Qv //
-
-	matrix_float_set_zero(pr_Qv);
-	int i;
-	for(i = 1; i <= T; i++){
-		if(i%3 == 0) matrix_float_set(&pr_Qv, i, i, pr_q);
-	}
-
-	matrix_float_print(&Qv);
-
-	// SETTING Pv //
-	float Pv_arr[6*6];
-	matrix_float Pv = {6, 6, (float*) Pv_arr, "Pv"};
-	matrix_float_set_zero(&Pv);
-
-	for(i = 1; i <= 6; i++){
-		matrix_float_set(&Pv, i, i, pr_p);
-	}
-
-	// SETTING Hv, Hv=Bv'*Qv*Bv+Pv; //
-	float Qv_Bv_arr[T*6*6];
-	matrix_float Qv_Bv = {6, T*3, (float*) Qv_Bv_arr, "Qv_Bv"};
-	float Bv_tr_arr[(6*T)*(2*T)];
-	matrix_float Bv_tr = {6*T, 2*T, (float*) Bv_tr_arr, "Bv_tr"};
-	matrix_float_transpose(&pr_Bv, &Bv_tr);
-
-	matrix_float_mul(&Qv, &pr_Bv, &Qv_Bv);
-	matrix_float_mul(&Bv_tr, &Qv_Bv, &pr_Hv);
-	matrix_float_mul(&Bv_tr, &Qv_Bv, &pr_Hv);
-	matrix_float_add(&Hv, &Pv);			// Hv=Bv'*Qv*Bv+Pv;, not tested;
-
-	usart4PutString("Ending set_matrixes()\n\r");
-}
 
 void create_Bv(){
 	// done, working
@@ -233,12 +170,12 @@ void create_Bv(){
 //	    Av(((i-1)*x+1):x*i,:)=A^i;
 //	end
 //	matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};
-
+/*
 	int X = pr_Bv.width;
 	int Y = pr_Bv.height;
 	int pos_y;
 
-	float A_tmp_arr[6*6], tmp;
+	float A_tmp_arr[6*6];
 	float A_cp_arr[6*6];
 	float A_b_arr[6*2];
 	matrix_float A_tmp = {6, 6, (float*) A_tmp_arr, "A_tmp"};
@@ -261,28 +198,9 @@ void create_Bv(){
 			matrix_float_set_submatrix(&pr_Bv, &A_b, x*2+1, y*6+1);
 		}
 	}
+	*/
 }
 
-void create_Av(){
-	// tested, working
-
-	int X = pr_Av.width;
-	int Y = pr_Av.height;
-
-	float A_tmp_arr[6*6], tmp;
-	matrix_float A_tmp = {6, 6, (float*) A_tmp_arr, "A_tmp"};
-	float A_cp_arr[6*6], tmp2;
-	matrix_float A_cp = {6, 6, (float*) A_cp_arr, "A_cp"};
-	matrix_float_copy(&A_tmp, &pr_A);
-	matrix_float_copy(&A_cp, &pr_A);
-
-	int x, y, i;
-	for(i = 0; i < T; i++){
-		matrix_float_set_submatrix(&pr_Av, &A_tmp, 1, i*6+1);
-		matrix_float_mul(&pr_A, &A_cp, &A_tmp);
-		matrix_float_copy(&A_cp, &A_tmp);
-	}
-}
 
 
 void string_print(const char * a) {
@@ -307,13 +225,6 @@ void test_predictive(){		//p
 	matrix_float_print(&A);
 	matrix_float_add_diag(&A, &Get_test);
 	matrix_float_print(&A);
-
-
-
-
-
-
-
 }
 
 void test_check(){	//t
@@ -411,7 +322,7 @@ int check(const matrix_float * A, const vector_float * B, const vector_float * u
 }
 
 
-// probably infinite loop
+
 // edits u0 vector for feasible input such as A*u0 + B < 0
 void correct(const matrix_float * A, const vector_float * B, vector_float * u0){
 	// tested, working
@@ -492,19 +403,6 @@ int sign(float num){
 
 
 void my_quadprog(const matrix_float * H, const matrix_float * c, const matrix_float * A, const vector_float * B, vector_float * u, const int iterations, const int step){
-
-//	for i = 1:iterations
-//	    k = 1;
-//	    tmp_grad = grad(u);
-//	    u = u - k*step*tmp_grad;
-//	    if my_check(A, B, u) < 1
-//	          u = correct(A, B, u);
-//	          if my_check(A, B, u) < 1
-//	            error('mimo rozsah')
-//	          end
-//	    end
-//	   %[i f(u) g(u)];% cost(u) my_check(A, B, u)]
-//	end
 
 	int i, N = u->length;
 	float grad_arr[N];
@@ -596,6 +494,7 @@ void cost_gradient(const matrix_float * H, const vector_float * c, const vector_
 
 void test_quadprog(){		// q
 		//testing function check
+	/*
 		usart4PutString("test quadprog runing\n\r");
 		int max = 3;
 		float A_arr[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -631,6 +530,7 @@ void test_quadprog(){		// q
 		mountain_gradient(&A, &B, &u, &grad);
 
 		vector_float_print(&grad);
+		*/
 }
 
 void test_constraint(){		// c
@@ -714,6 +614,32 @@ void my_constraint(float * x0, float * y0, int * radius, float * k, float * q, f
 
 	*q = (by - (*k)*bx);
 }
+
+
+void create_Av(){
+	// tested, working
+	/*
+	int X = pr_Av.width;
+	int Y = pr_Av.height;
+
+	float A_tmp_arr[6*6], tmp;
+	matrix_float A_tmp = {6, 6, (float*) A_tmp_arr, "A_tmp"};
+	float A_cp_arr[6*6], tmp2;
+	matrix_float A_cp = {6, 6, (float*) A_cp_arr, "A_cp"};
+	matrix_float_copy(&A_tmp, &pr_A);
+	matrix_float_copy(&A_cp, &pr_A);
+
+	int x, y, i;
+	for(i = 0; i < T; i++){
+		matrix_float_set_submatrix(&pr_Av, &A_tmp, 1, i*6+1);
+		matrix_float_mul(&pr_A, &A_cp, &A_tmp);
+		matrix_float_copy(&A_cp, &A_tmp);
+	}
+	*/
+}
+
+
+
 
 
 
