@@ -154,6 +154,10 @@ void commTask(void *p) {
 //				set_matrixes();
 				break;
 
+			case 104: 			//h
+				test_handler();
+				break;
+
 			default:			//blikani
 				led_toggle();
 				break;
