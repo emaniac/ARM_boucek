@@ -57,6 +57,9 @@ typedef struct {
 
 	float elevatorReference[5];
 	float aileronReference[5];
+	float obsticle_x;
+	float obsticle_y;
+	float obsticle_r;
 
 } comm2mpcMessage_t;
 

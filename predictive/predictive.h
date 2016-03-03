@@ -9,12 +9,19 @@
 typedef struct {
 
 	vector_float * initial_cond;
+	matrix_float * Tr_reduced;	// size [T x 2]
+	matrix_float * Tr;
+
+	float position_reference_x;
+	float position_reference_y;
+
 	float obsticle_x;
 	float obsticle_y;
 	float obsticle_radius;
-	matrix_float * Tr_reduced;	// size [T x 2]
 
-} pr_Handler;
+	int type;	// 1 for trajectory, 2 for reference
+
+} prHandler;
 
 void string_print(const char * a);
 

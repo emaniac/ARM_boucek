@@ -28,6 +28,8 @@
 #define pr_step 50
 #define pr_q 300
 #define pr_p 1e-6
+#define OBSTACLES 0		// if recieving obstacles
+#define MAX_SPEED 1
 
 // constants for testing
 float final_x = 10;
@@ -84,45 +86,67 @@ vector_float pr_Acy_x0 = {T, 0, (float*) pr_Acy_x0_arr, "pr_Acy_x0"};
 vector_float pr_Av_x0 = {6*T, 0, (float*) pr_Av_x0_arr, "Av_x0"};
 
 
-void test_handler(){	//h
-	// working
-	pr_Handler handler;
-	int i;
-	prepare();
 
-	float Tr_arr[2*T], x0_arr[6];
-	matrix_float Tr = {2, T, (float *) Tr_arr, "Tr - desired trajectory from handler"};
-	vector_float x0 = {6, 0, (float *) x0_arr, "x0 -  initial condition from handler"};
+void compute_Tr_reduced(prHandler * handler){
+	// needs to be implemented
+	float Tr_reducet_tmp_arr[2*T];
+	matrix_float Tr_reduced_tmp = {2, T, (float*) Tr_reducet_tmp_arr, "Tr_reduced_tmp - Reduced trajectory matrix in handler"};
+
+	int i, full_idx;
 	for(i = 1; i <= T; i++){
-		matrix_float_set(&Tr, i, 1, final_x*i/T);
-		matrix_float_set(&Tr, i, 2, final_y*i/T);
+		full_idx = vector_float_get(handler->Tr, i);
+		matrix_float_set(&Tr_reduced_tmp, i, 1, matrix_float_get(handler->Tr, full_idx, 1));
+		matrix_float_set(&Tr_reduced_tmp, i, 2, matrix_float_get(handler->Tr, full_idx, 2));
 	}
-	vector_float_set_zero(&x0);
-
-	handler.obsticle_x = -1;
-	handler.obsticle_y = 5;
-	handler.obsticle_radius = 1.5;
-	handler.initial_cond = &x0;
-	handler.Tr_reduced = &Tr;
 
 
-	float action_x, action_y;
-
-	usart4PutString("s\n\r");
-	pr_calculateMPC(&handler, &action_x, &action_y);
-	usart4PutString("e\n\r");
-
-//	usart_string_float_print("action_x = ", &action_x);
-//	usart_string_float_print("action_y = ", &action_y);
+	handler->Tr_reduced = &Tr_reduced_tmp;
 }
 
-void pr_calculateMPC(const pr_Handler * handler, float * action_x, float * action_y) {
+void create_Tr_reference(prHandler * handler){
+	float x0 = vector_float_get(pr_x0, 1);
+	float y0 = vector_float_get(pr_x0, 4);
+	float dx = (handler->position_reference_x-x0);
+	float dy = (handler->position_reference_y-y0);
+	float x, y, distance = sqrt(dx*dx+dy*dy);
+	float dx_n = MAX_SPEED*(dx/distance);
+	float dy_n = MAX_SPEED*(dy/distance);
+	float lastTime = vector_float_get(&pr_block, T);
+	int length, i;
+
+	if(distance/MAX_SPEED > lastTime){
+		length = distance/MAX_SPEED;
+	} else {
+		length = lastTime;
+	}
+
+	float Tr_reduced_arr[2*T];
+	matrix_float Tr_reduced =
+	for(i = 1; i <= length; i++){
+
+	}
+	// needs to be completed
+
+}
+
+void pr_calculateMPC(const prHandler * handler, float * action_x, float * action_y) {
 //	usart4PutString("------pr_calculateMPC running 2.------\n\r");
+	// need to allocate tr_reduced
+	matrix_float_set_zero(&pr_Tr_des);
 
 	pr_x0.data = handler->initial_cond->data;
-	float obsticle_x = handler->obsticle_x;
-	float obsticle_y = handler->obsticle_y;
-	float obsticle_radius = handler->obsticle_radius;
+
+	if(handler->type == 1)	// trajectory
+		compute_Tr_reduced(handler);
+	if(!OBSTACLES){
+		obsticle_x = 1000;
+		obsticle_y = 1000;
+		obsticle_radius = 1;
+	} else{
+		float obsticle_x = handler->obsticle_x;
+		float obsticle_y = handler->obsticle_y;
+		float obsticle_radius = handler->obsticle_radius;
+	}
 
 	int i;
 	for(i = 1; i <= T; i++){
@@ -134,6 +158,7 @@ void pr_calculateMPC(const pr_Handler * handler, float * action_x, float * actio
 
 	float k, q, sig;
 	my_constraint(&obsticle_x, &obsticle_y, &obsticle_radius, &k, &q, &sig);
+
 
 
 	// compute Ac and Bc
@@ -163,7 +188,38 @@ void pr_calculateMPC(const pr_Handler * handler, float * action_x, float * actio
 
 	*action_x = vector_float_get(&pr_Uv, 1);
 	*action_y = vector_float_get(&pr_Uv, 2);
+}
 
+void test_handler(){	//h
+	// working
+	prHandler handler;
+	int i;
+	prepare();
+
+	float Tr_arr[2*T], x0_arr[6];
+	matrix_float Tr = {2, T, (float *) Tr_arr, "Tr - desired trajectory from handler"};
+	vector_float x0 = {6, 0, (float *) x0_arr, "x0 -  initial condition from handler"};
+	for(i = 1; i <= T; i++){
+		matrix_float_set(&Tr, i, 1, final_x*i/T);
+		matrix_float_set(&Tr, i, 2, final_y*i/T);
+	}
+	vector_float_set_zero(&x0);
+
+	handler.obsticle_x = -1;
+	handler.obsticle_y = 5;
+	handler.obsticle_radius = 1.5;
+	handler.initial_cond = &x0;
+	handler.Tr_reduced = &Tr;
+
+
+	float action_x, action_y;
+
+	usart4PutString("s\n\r");
+	pr_calculateMPC(&handler, &action_x, &action_y);
+	usart4PutString("e\n\r");
+
+//	usart_string_float_print("action_x = ", &action_x);
+//	usart_string_float_print("action_y = ", &action_y);
 }
 
 
