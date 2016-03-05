@@ -7,8 +7,6 @@
 This file was created automatically with following parameters
 
 */
-# define T 4
-
 
 const float block_arr[T] = {
 1.00000000000000000000, 2.00000000000000000000, 5.00000000000000000000, 10.00000000000000000000, 

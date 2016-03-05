@@ -10,6 +10,7 @@
 #include "mpc/elevator/elevatorMpc.h"
 #include "mpc/aileron/aileronMpc.h"
 #include "CMatrixLib.h"
+#include "predictive.h"	// ok?
 #define OBSTACLES 1			// if running Honza's code
 #define T_MAX 10			// last value in pr_block
 
@@ -20,7 +21,7 @@ void mpcTask(void *p) {
 	/* -------------------------------------------------------------------- */
 	mpcHandler_t * elevatorMpcHandler = initializeElevatorMPC();
 	mpcHandler_t * aileronMpcHandler = initializeAileronMPC();
-	prHandler * prHandler;
+	prHandler * pr_handler = initializePrHandler();
 
 	/* -------------------------------------------------------------------- */
 	/*	Messages between tasks												*/
@@ -40,8 +41,9 @@ void mpcTask(void *p) {
 
 			if (comm2mpcMessage.messageType == SETPOINT) {
 				if(OBSTACLES){
-					vector_float_set_to(prHandler->position_reference_x, comm2mpcMessage.elevatorReference[0]);	// predictive
-					vector_float_set_to(prHandler->position_reference_y, comm2mpcMessage.elevatorReference[0]);	// predictive
+					pr_handler->type = 1;
+					pr_handler->position_reference_x = comm2mpcMessage.elevatorReference[0];	// predictive
+					pr_handler->position_reference_y = comm2mpcMessage.elevatorReference[0];	// predictive
 				} else{
 					// copy the incoming set point/s into the local vector
 					vector_float_set_to(elevatorMpcHandler->position_reference, comm2mpcMessage.elevatorReference[0]);
@@ -52,20 +54,21 @@ void mpcTask(void *p) {
 					int i, j;
 					float step;
 					int granularity = (T_MAX+4)/5;
+					pr_handler->type = 2;
 
 					// for all key-point in the aileron reference
 					for (j = 0; j < 4; j++) {
 
 						// calculate the interpolation step
-						step_x = (comm2mpcMessage.aileronReference[j+1] - comm2mpcMessage.aileronReference[j])/granularity;
-						step_y = (comm2mpcMessage.elevatorReference[j+1] - comm2mpcMessage.elevatorReference[j])/granularity;
+						float step_x = (comm2mpcMessage.aileronReference[j+1] - comm2mpcMessage.aileronReference[j])/granularity;
+						float step_y = (comm2mpcMessage.elevatorReference[j+1] - comm2mpcMessage.elevatorReference[j])/granularity;
 
-						matrix_float_set(prHandler->Tr, j*granularity+1, 1, comm2mpcMessage.aileronReference[j]);
-						matrix_float_set(prHandler->Tr, j*granularity+1, 2, comm2mpcMessage.elevatorReference[j]);
+						matrix_float_set(pr_handler->Tr_full, j*granularity+1, 1, comm2mpcMessage.aileronReference[j]);
+						matrix_float_set(pr_handler->Tr_full, j*granularity+1, 2, comm2mpcMessage.elevatorReference[j]);
 
 						for (i = 1; i < granularity; i++) {
-							matrix_float_set(prHandler->Tr, j*granularity+1+i, 1, matrix_float_get(prHandler->Tr, j*granularity+i, 1) + step_x);
-							matrix_float_set(prHandler->Tr, j*granularity+1+i, 2, matrix_float_get(prHandler->Tr, j*granularity+i, 2) + step_y);
+							matrix_float_set(pr_handler->Tr_full, j*granularity+1+i, 1, matrix_float_get(pr_handler->Tr_full, j*granularity+i, 1) + step_x);
+							matrix_float_set(pr_handler->Tr_full, j*granularity+1+i, 2, matrix_float_get(pr_handler->Tr_full, j*granularity+i, 2) + step_y);
 						}
 					}
 				} else {
@@ -110,12 +113,15 @@ void mpcTask(void *p) {
 			if(OBSTACLES){
 
 				// set initial condition
-				vector_float_set(prHandler->initial_cond, 1, vector_float_get(&kalman2mpcMessage.aileronData , 1));
-				vector_float_set(prHandler->initial_cond, 2, vector_float_get(&kalman2mpcMessage.aileronData , 2));
-				vector_float_set(prHandler->initial_cond, 3, vector_float_get(&kalman2mpcMessage.aileronData , 3));
-				vector_float_set(prHandler->initial_cond, 4, vector_float_get(&kalman2mpcMessage.elevatorData, 1));
-				vector_float_set(prHandler->initial_cond, 5, vector_float_get(&kalman2mpcMessage.elevatorData, 2));
-				vector_float_set(prHandler->initial_cond, 6, vector_float_get(&kalman2mpcMessage.elevatorData, 3));
+				vector_float_set(pr_handler->x0, 1, vector_float_get(&kalman2mpcMessage.aileronData , 1));
+				vector_float_set(pr_handler->x0, 2, vector_float_get(&kalman2mpcMessage.aileronData , 2));
+				vector_float_set(pr_handler->x0, 3, vector_float_get(&kalman2mpcMessage.aileronData , 3));
+				vector_float_set(pr_handler->x0, 4, vector_float_get(&kalman2mpcMessage.elevatorData, 1));
+				vector_float_set(pr_handler->x0, 5, vector_float_get(&kalman2mpcMessage.elevatorData, 2));
+				vector_float_set(pr_handler->x0, 6, vector_float_get(&kalman2mpcMessage.elevatorData, 3));
+
+				pr_handler->error_x = vector_float_get(&kalman2mpcMessage.aileronData, 5);
+				pr_handler->error_y = vector_float_get(&kalman2mpcMessage.elevatorData, 5);
 
 				// filter the reference
 				filterReferenceTrajectory(elevatorMpcHandler);
@@ -123,14 +129,13 @@ void mpcTask(void *p) {
 
 				// calculate the elevator MPC
 				float action_x, action_y;
-				pr_calculateMPC(prHandler, &action_x, &action_y);
+				pr_calculateMPC(pr_handler, &action_x, &action_y);
 				mpc2commMessage.aileronOutput  = action_x;
 				mpc2commMessage.elevatorOutput = action_y;
 
 				// copy the current setpoint (main for debug)
-				mpc2commMessage.elevatorSetpoint = vector_float_get(prHandler->position_reference_x, 1);
-				mpc2commMessage.aileronSetpoint = vector_float_get(prHandler->position_reference_y, 1);
-
+				mpc2commMessage.aileronSetpoint = pr_handler->position_reference_x;
+				mpc2commMessage.elevatorSetpoint = pr_handler->position_reference_y;
 				// send outputs to commTask
 				xQueueOverwrite(mpc2commQueue, &mpc2commMessage);
 

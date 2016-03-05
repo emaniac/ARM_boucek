@@ -28,6 +28,8 @@
 #include "kalman/elevator/elevatorKalman.h"
 #include "kalman/aileron/aileronKalman.h"
 
+#define MAX_BLOBS 4	// maximum blobs, copy in atmel, multiCon.h
+
 /**********************************************************************************
  *
  * The GPIO_InitTypeDef is a structure defined in the stm32f4xx_gpio.h file.
@@ -48,7 +50,7 @@ QueueHandle_t * usartTxQueue;
 /*	Messages types for communication between tasks						*/
 /* -------------------------------------------------------------------- */
 
-enum comm2mpcMessageType_t {SETPOINT, TRAJECTORY};
+enum comm2mpcMessageType_t {SETPOINT, TRAJECTORY, BLOBS};
 
 // setpoint message
 typedef struct {
@@ -57,9 +59,10 @@ typedef struct {
 
 	float elevatorReference[5];
 	float aileronReference[5];
-	float obsticle_x;
-	float obsticle_y;
-	float obsticle_r;
+	float obsticle_n;
+	float obsticle_x[MAX_BLOBS];
+	float obsticle_y[MAX_BLOBS];
+	float obsticle_r[MAX_BLOBS];
 
 } comm2mpcMessage_t;
 

@@ -335,6 +335,35 @@ void commTask(void *p) {
 
 				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
 
+			} else if (messageId == 'B') {
+
+				comm2mpcMessage_t comm2mpcMessage;
+
+				comm2mpcMessage.messageType = BLOBS;
+
+				tempFloat = readFloat(messageBuffer, &idx);
+				if (fabs(tempFloat) < 25)
+					comm2mpcMessage.obsticle_n = tempFloat;
+
+				// receive the elevator trajectory key-point
+				int i;
+				for (i = 0; i < comm2mpcMessage.obsticle_n; i++) {
+
+					tempFloat = readFloat(messageBuffer, &idx);
+					if (fabs(tempFloat) < 25)
+						comm2mpcMessage.obsticle_x[i] = tempFloat;
+
+					tempFloat = readFloat(messageBuffer, &idx);
+					if (fabs(tempFloat) < 25)
+						comm2mpcMessage.obsticle_y[i] = tempFloat;
+
+					tempFloat = readFloat(messageBuffer, &idx);
+					if (fabs(tempFloat) < 25)
+						comm2mpcMessage.obsticle_r[i] = tempFloat;
+				}
+
+				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
+
 			}
 
 			messageReceived = 0;

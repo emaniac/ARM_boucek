@@ -7,7 +7,8 @@
 
 
 #include "CMatrixLib.h"
-#define T 4
+# define T 4
+# define LAST_TIME 10
 
 
 const float pr_block_arr[T];	//has to fit

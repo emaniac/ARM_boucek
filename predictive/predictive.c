@@ -9,6 +9,9 @@
  *  prejmenovat fci na pring a predavat hodnotu
  *  ctvrtek: vygenerovat vsechny matice a dat je do C.
  *
+ *  where handler->max_speed is assigned?
+ *  where the computed error is assigned?
+ *
  */
 
 // vTaskDelay
@@ -16,7 +19,6 @@
 // vector orientation: 0 - height, 1 - width
 
 #include "predictive.h"
-#include "commTask.h"
 #include "predictiveMatrices.h"
 //#include "mpc.h"
 
@@ -25,17 +27,21 @@
 
 // constant parameters
 #define pr_dt 0.01148
-#define pr_step 50
 #define pr_q 300
 #define pr_p 1e-6
+#define MOUNTAIN_K 1000		// the value of mountain gradient function
+
+#define GRAD_STEP 50	// grad step
+#define grad_iterations 200
+
 #define OBSTACLES 0		// if recieving obstacles
-#define MAX_SPEED 1
+#define MAX_SPEED 1		// in m/dt
+#define pr_B_k 0.000050719	// matrix B constant
 
 // constants for testing
 float final_x = 10;
 float final_y = 7;
-int iterations = 200;
-
+int first_time_running = 1;
 
 
 // constant matrixes allocations, arrays in separate file predictiveMatrices.c
@@ -55,20 +61,10 @@ const matrix_float Qv_Bv_t={6*T, 2*T, (float*) Qv_Bv_t_arr, "Qv_Bv_t - (Qv*Bv)'"
 //	dynamic matrix allocations
 
 float pr_Uv_arr[(2*T)];			//input vector
-float pr_Ac_arr[T*(2*T)];
-float pr_Bc_arr[T];
 float pr_c_arr [(2*T)];			//column vector
-float pr_x0_arr[6];				// lost reference after inicialization?
-float pr_Tr_uav_arr[6*T];		// computed trajectory
-float pr_Tr_des_arr[6*T];		// desired trajectory
 
 vector_float pr_Uv = {2*T, 0, (float*) pr_Uv_arr, "pr_Uv"};
 vector_float pr_c  = {2*T, 0, (float*) pr_c_arr,  "pr_c"};
-matrix_float pr_Ac = {2*T, T, (float*) pr_Ac_arr, "pr_Ac"};
-vector_float pr_Bc = {  T, 0, (float*) pr_Bc_arr, "pr_Bc"};
-vector_float pr_x0 = {  6, 0, (float*) pr_x0_arr, "pr_x0"};
-matrix_float pr_Tr_des={6,   T, (float*) pr_Tr_des_arr, "pr_Tr_des - dsired trajectory"};
-matrix_float pr_Tr_uav={6,   T, (float*) pr_Tr_uav_arr, "pr_Tr_uav - UAV's trajectory"};
 
 float pr_Acx_arr[6*T];
 float pr_Acy_arr[6*T];
@@ -85,98 +81,82 @@ matrix_float pr_Bcy = {2*T, T, (float*) pr_Bcy_arr, "pr_Bcy"};
 vector_float pr_Acy_x0 = {T, 0, (float*) pr_Acy_x0_arr, "pr_Acy_x0"};
 vector_float pr_Av_x0 = {6*T, 0, (float*) pr_Av_x0_arr, "Av_x0"};
 
+// handler properties
+float pr_Tr_full_arr[2*LAST_TIME];		// computed trajectory
+float pr_Tr_red_arr[6*T];		// desired trajectory
+float pr_x0_arr[6];				// lost reference after inicialization?
 
+matrix_float pr_Tr_red={6, T, (float*) pr_Tr_red_arr, "pr_Tr_red - dsired trajectory"};
+matrix_float pr_Tr_full={2, LAST_TIME, (float*) pr_Tr_full_arr, "pr_Tr_full - UAV's trajectory"};
+vector_float pr_x0 = {  6, 0, (float*) pr_x0_arr, "pr_x0"};
 
-void compute_Tr_reduced(prHandler * handler){
-	// needs to be implemented
-	float Tr_reducet_tmp_arr[2*T];
-	matrix_float Tr_reduced_tmp = {2, T, (float*) Tr_reducet_tmp_arr, "Tr_reduced_tmp - Reduced trajectory matrix in handler"};
+prHandler pr_handler;
 
-	int i, full_idx;
-	for(i = 1; i <= T; i++){
-		full_idx = vector_float_get(handler->Tr, i);
-		matrix_float_set(&Tr_reduced_tmp, i, 1, matrix_float_get(handler->Tr, full_idx, 1));
-		matrix_float_set(&Tr_reduced_tmp, i, 2, matrix_float_get(handler->Tr, full_idx, 2));
-	}
-
-
-	handler->Tr_reduced = &Tr_reduced_tmp;
-}
-
-void create_Tr_reference(prHandler * handler){
-	float x0 = vector_float_get(pr_x0, 1);
-	float y0 = vector_float_get(pr_x0, 4);
-	float dx = (handler->position_reference_x-x0);
-	float dy = (handler->position_reference_y-y0);
-	float x, y, distance = sqrt(dx*dx+dy*dy);
-	float dx_n = MAX_SPEED*(dx/distance);
-	float dy_n = MAX_SPEED*(dy/distance);
-	float lastTime = vector_float_get(&pr_block, T);
-	int length, i;
-
-	if(distance/MAX_SPEED > lastTime){
-		length = distance/MAX_SPEED;
-	} else {
-		length = lastTime;
-	}
-
-	float Tr_reduced_arr[2*T];
-	matrix_float Tr_reduced =
-	for(i = 1; i <= length; i++){
-
-	}
-	// needs to be completed
-
-}
-
-void pr_calculateMPC(const prHandler * handler, float * action_x, float * action_y) {
-//	usart4PutString("------pr_calculateMPC running 2.------\n\r");
+int pr_calculateMPC( prHandler * handler, float * action_x, float * action_y) {
+	usart4PutString("------pr_calculateMPC running 2.------\n\r");
 	// need to allocate tr_reduced
-	matrix_float_set_zero(&pr_Tr_des);
 
-	pr_x0.data = handler->initial_cond->data;
-
-	if(handler->type == 1)	// trajectory
+	if(handler->type == 0) {			// uninitialized
+		usart4PutString("ERROR in pr_calculateMPC() - uninitialized handler type.\n\r");
+		return 0;
+	} else if(handler->type == 1){		// trajectory
 		compute_Tr_reduced(handler);
+	} else{								// set point
+		create_Tr_reference(handler);
+		compute_Tr_reduced(handler);
+	}
 	if(!OBSTACLES){
-		obsticle_x = 1000;
-		obsticle_y = 1000;
-		obsticle_radius = 1;
-	} else{
-		float obsticle_x = handler->obsticle_x;
-		float obsticle_y = handler->obsticle_y;
-		float obsticle_radius = handler->obsticle_radius;
+		handler->obsticle_x = 1000;
+		handler->obsticle_y = 1000;
+		handler->obsticle_r = 1;
 	}
 
-	int i;
-	for(i = 1; i <= T; i++){
-		matrix_float_set(&pr_Tr_des, i, 1, matrix_float_get(handler->Tr_reduced, i, 1));	// x
-		matrix_float_set(&pr_Tr_des, i, 4, matrix_float_get(handler->Tr_reduced, i, 2));	// y
-	}
+	int i, N = handler->obsticle_n;
 
 	/* CONSTRAINTS */
 
+	// for all obstacles and all reduced states
+	float Ac_arr[(N*T)*(2*T)];
+	float Bc_arr[T*N];
+	matrix_float Ac = {2*T, N*T, (float*) Ac_arr, "Ac - constraint matrix for all obstacles"};
+	vector_float Bc = {N*T,   0, (float*) Bc_arr, "Bc - constraint matrix for all obstacles"};
+
+	// for each obstacle
+	float Ac_tmp_arr[T*(2*T)];
+	float Bc_tmp_arr[T];
+	matrix_float Ac_tmp = {2*T, T, (float*) Ac_tmp_arr, "Ac_tmp - constraint matrix for one obstacle"};
+	vector_float Bc_tmp = {  T, 0, (float*) Bc_tmp_arr, "Bc_tmp - constraint matrix for one obstacle"};
+
 	float k, q, sig;
-	my_constraint(&obsticle_x, &obsticle_y, &obsticle_radius, &k, &q, &sig);
 
+	for(i = 0; i < N; i++){
+		my_constraint(&(handler->obsticle_x[i]), &(handler->obsticle_y[i]), &(handler->obsticle_r[i]), &k, &q, &sig);
 
+		// needs to be coputed, changing every loop
+		constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
+		constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
 
-	// compute Ac and Bc
-	matrix_float_times(&pr_Bcx, -k);
-	matrix_float_add(&pr_Bcx, &pr_Bcy);
-	if(sig != 1) matrix_float_times(&pr_Bcx, sig);
-	matrix_float_copy(&pr_Ac, &pr_Bcx);
+		// compute Ac and Bc
+		matrix_float_times(&pr_Bcx, -k);
+		matrix_float_add(&pr_Bcx, &pr_Bcy);
+		if(sig != 1) matrix_float_times(&pr_Bcx, sig);
+		matrix_float_copy(&Ac_tmp, &pr_Bcx);
 
-	matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &pr_Bc);
-	vector_float_times(&pr_Bc, -k);
-	matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
-	vector_float_add(&pr_Bc, &pr_Acy_x0);
-	vector_float_set_all(&pr_Acy_x0, -q);
-	vector_float_add(&pr_Bc, &pr_Acy_x0);
-	if(sig != 1) vector_float_times(&pr_Bc, sig);
+		matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &Bc_tmp);
+		vector_float_times(&Bc_tmp, -k);
+		matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
+		vector_float_add(&Bc_tmp, &pr_Acy_x0);
+		vector_float_set_all(&pr_Acy_x0, -q);
+		vector_float_add(&Bc_tmp, &pr_Acy_x0);
+		if(sig != 1) vector_float_times(&Bc_tmp, sig);
+
+		matrix_float_set_submatrix(&Ac, &Ac_tmp, 1, i*T+1);
+		vector_float_set_subvector(&Bc, &Bc_tmp, i*T+1);
+	}
+
 
 //	reshape Tr
-	vector_float Tr_vec = {T*6, 0, (float*) pr_Tr_des_arr, "Tr_vec - reshaped pr_Tr_des, pr_calculateMPC()"};
+	vector_float Tr_vec = {T*6, 0, (float*) pr_Tr_red_arr, "Tr_vec - reshaped pr_Tr_red, pr_calculateMPC()"};
 
 
 //  c = (Qv*Bv)'*(Av*x0-Tr_desired);
@@ -184,11 +164,93 @@ void pr_calculateMPC(const prHandler * handler, float * action_x, float * action
 	vector_float_subtract(&pr_Av_x0, &Tr_vec);
 	matrix_float_mul_vec_right(&Qv_Bv_t, &pr_Av_x0, &pr_c);
 
-	my_quadprog(&pr_Hv, &pr_c, &pr_Ac, &pr_Bc, &pr_Uv, iterations, pr_step);
+	my_quadprog(&pr_Hv, &pr_c, &Ac, &Bc, &pr_Uv);
 
-	*action_x = vector_float_get(&pr_Uv, 1);
-	*action_y = vector_float_get(&pr_Uv, 2);
+	*action_x = vector_float_get(&pr_Uv, 1) - handler->error_x/pr_B_k;
+	*action_y = vector_float_get(&pr_Uv, 2) - handler->error_y/pr_B_k;
 }
+
+void prepare(){
+	//needs to be called first
+	vector_float_set_zero(&pr_Uv);
+	matrix_float_set_zero(&pr_Tr_red);
+	matrix_float_set_zero(&pr_Tr_full);
+}
+
+prHandler * initializePrHandler() {
+	pr_handler.x0 = &pr_x0;
+	pr_handler.Tr_reduced = &pr_Tr_red;	// size [T x 2]
+	pr_handler.Tr_full = &pr_Tr_full;
+
+	pr_handler.error_x = 0;
+	pr_handler.error_y = 0;
+
+	pr_handler.position_reference_x = 0;
+	pr_handler.position_reference_y = 0;
+
+	float obsticle_x[MAX_BLOBS];
+	float obsticle_y[MAX_BLOBS];
+	float obsticle_r[MAX_BLOBS];
+
+	pr_handler.obsticle_x = (float*)obsticle_x;
+	pr_handler.obsticle_y = obsticle_y;
+	pr_handler.obsticle_r = obsticle_r;
+	pr_handler.obsticle_n = -1;
+
+	if(first_time_running) {
+		prepare();
+		first_time_running = 0;
+	}
+
+	pr_handler.type = 0;	// 1 for trajectory, 2 for reference, 0 for not initializes
+	return &pr_handler;
+}
+
+void compute_Tr_reduced(prHandler * handler){
+	// done, not tested
+	int i, full_idx;
+	for(i = 1; i <= T; i++){
+		full_idx = vector_float_get(&pr_block, i);
+		matrix_float_set(handler->Tr_reduced, i, 1, matrix_float_get(handler->Tr_full, full_idx, 1));
+		matrix_float_set(handler->Tr_reduced, i, 4, matrix_float_get(handler->Tr_full, full_idx, 2));
+	}
+}
+
+void create_Tr_reference(prHandler * handler){
+	// done, not tested
+	float x0 = vector_float_get(&pr_x0, 1);
+	float y0 = vector_float_get(&pr_x0, 4);
+	float dx = (handler->position_reference_x-x0);
+	float dy = (handler->position_reference_y-y0);
+	float distance = sqrt(dx*dx+dy*dy);
+	float dx_n = MAX_SPEED*(dx/distance);
+	float dy_n = MAX_SPEED*(dy/distance);
+	float lastTime = vector_float_get(&pr_block, T);
+	int length, i;
+	float step_dx, step_dy, step;
+
+	if(distance/MAX_SPEED > lastTime){
+		length = distance/MAX_SPEED;
+	} else {
+		length = lastTime;
+	}
+	for(i = 1; i <= T; i++){
+		step = vector_float_get(&pr_block, i);
+		step_dx = step*dx_n;
+		if(abs(step_dx) < abs(dx)){
+			matrix_float_set(&pr_Tr_red, i, 1, step_dx);
+		} else{
+			matrix_float_set(&pr_Tr_red, i, 1, dx);
+		}
+		step_dy = step*dy_n;
+		if(abs(step_dy) < abs(dy)){
+			matrix_float_set(&pr_Tr_red, i, 4, step_dy);
+		} else{
+			matrix_float_set(&pr_Tr_red, i, 4, dy);
+		}
+	}
+}
+
 
 void test_handler(){	//h
 	// working
@@ -205,10 +267,11 @@ void test_handler(){	//h
 	}
 	vector_float_set_zero(&x0);
 
-	handler.obsticle_x = -1;
-	handler.obsticle_y = 5;
-	handler.obsticle_radius = 1.5;
-	handler.initial_cond = &x0;
+	handler.obsticle_x[0] = -1;
+	handler.obsticle_y[0] = 5;
+	handler.obsticle_r[0] = 1.5;
+	handler.obsticle_n = 1;
+	handler.x0 = &x0;
 	handler.Tr_reduced = &Tr;
 
 
@@ -222,73 +285,6 @@ void test_handler(){	//h
 //	usart_string_float_print("action_y = ", &action_y);
 }
 
-
-
-void run_simulation(){	// r
-	// working as in Matlab
-	usart4PutString("----------------Run_simulation running 2.-----------------------------\n\r");
-
-	float obsticle_x = -1;
-	float obsticle_y = 5;
-	float obsticle_radius = 1.5;
-
-	int i;
-	vector_float_set_zero(&pr_x0);
-
-	// create trajectory, done
-	matrix_float_set_zero(&pr_Tr_des);
-	for(i = 1; i <= T; i++){
-		matrix_float_set(&pr_Tr_des, i, 1, final_x*i/T);
-		matrix_float_set(&pr_Tr_des, i, 4, final_y*i/T);
-	}
-
-
-	/* CONSTRAINTS */
-
-	constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
-	constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
-
-	float k, q, sig;
-	my_constraint(&obsticle_x, &obsticle_y, &obsticle_radius, &k, &q, &sig);
-
-//	Ac = sig*(-k*Bcx + Bcy);
-//	Bc = sig*(-k*Acx*x0 + Acy*x0 - q);
-
-	matrix_float_times(&pr_Bcx, -k);
-	matrix_float_add(&pr_Bcx, &pr_Bcy);
-	if(sig != 1) matrix_float_times(&pr_Bcx, sig);
-	matrix_float_copy(&pr_Ac, &pr_Bcx);
-
-	matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &pr_Bc);
-	vector_float_times(&pr_Bc, -k);
-	matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
-	vector_float_add(&pr_Bc, &pr_Acy_x0);
-	vector_float_set_all(&pr_Acy_x0, -q);
-	vector_float_add(&pr_Bc, &pr_Acy_x0);
-	if(sig != 1) vector_float_times(&pr_Bc, sig);
-
-//	Tr_desired=reshape(Tr_desired',lastTime*6, 1)
-	vector_float Tr_vec = {T*6, 0, (float*) pr_Tr_des_arr, "Tr_vec - reshaped pr_Tr_des, run_simulation"};
-	vector_float_print(&pr_x0);
-
-//  c = (Qv*Bv)'*(Av*x0-Tr_desired);
-	matrix_float_mul_vec_right(&pr_Av, &pr_x0, &pr_Av_x0);
-	vector_float_subtract(&pr_Av_x0, &Tr_vec);
-	matrix_float_mul_vec_right(&Qv_Bv_t, &pr_Av_x0, &pr_c);
-
-	vector_float_set_all(&pr_Uv, 0);				// should be pr_Uv from last computing
-	my_quadprog(&pr_Hv, &pr_c, &pr_Ac, &pr_Bc, &pr_Uv, iterations, pr_step);
-
-	vector_float_print(&pr_Uv);
-}
-
-void prepare(){
-	//needs to be called first
-	vector_float_set_zero(&pr_Uv);
-	matrix_float_set_zero(&pr_Tr_des);
-	constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
-	constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
-}
 
 
 void constraint_matrixes(const matrix_float * Av, matrix_float * Acx, matrix_float * Acy){
@@ -369,12 +365,8 @@ int check(const matrix_float * A, const vector_float * B, const vector_float * u
 void correct(const matrix_float * A, const vector_float * B, vector_float * u0){
 	// tested, working
 
-//	usart4PutString("Correcting running.\n\r");
 	int index_test = check(A, B, u0);
-	if(index_test == 0){
-//		usart4PutString("condition OK, u corrected\n\r");
-		return;
-	}
+	if(index_test == 0) return;
 
 	int16_t N = u0->length;
 	float d_arr[N];
@@ -467,7 +459,7 @@ int sign(float num){
 // ------------------------------------------------- QUADRATIC PROGRAMMING ---------------------------------------------
 
 
-void my_quadprog(const matrix_float * H, const matrix_float * c, const matrix_float * A, const vector_float * B, vector_float * u, const int iterations, const int step){
+void my_quadprog(const matrix_float * H, const matrix_float * c, const matrix_float * A, const vector_float * B, vector_float * u){
 
 	int i, N = u->length;
 	float grad_arr[N];
@@ -475,16 +467,17 @@ void my_quadprog(const matrix_float * H, const matrix_float * c, const matrix_fl
 
 	vector_float grad = {N, 0, (float*) grad_arr, "grad"};
 	vector_float grad_mountain = {N, 0, (float*) grad_mountain_arr, "grad_mountain"};
-	vector_float_set_zero(&grad);
-	vector_float_set_zero(&grad_mountain);
 
 
 	correct(A, B, u);
-	for(i = 1; i <= iterations; i++){
+	for(i = 1; i <= grad_iterations; i++){
+
 		cost_gradient(H, c, u, &grad);
-		mountain_gradient(A, B, u, &grad_mountain);
-		vector_float_add(&grad, &grad_mountain);
-		vector_float_times(&grad, step);
+		if(OBSTACLES) {
+			mountain_gradient(A, B, u, &grad_mountain);
+			vector_float_add(&grad, &grad_mountain);
+		}
+		vector_float_times(&grad, GRAD_STEP);
 		vector_float_subtract(u, &grad);
 		correct(A, B, u);
 	}
@@ -501,7 +494,7 @@ void mountain_gradient(const matrix_float * A, const vector_float * B, const vec
 
 	grad->name = "mountain gradieng";
 
-	int i, k = 1000;
+	int i;
 	int N = B->length;
 	float W_arr[N], dot_W_u, B_i, sig, norm_w;
 	vector_float W = {N, 0, (float*) W_arr, "W"};
@@ -522,7 +515,7 @@ void mountain_gradient(const matrix_float * A, const vector_float * B, const vec
 		norm_w = vector_float_norm(&W);							// norm(w)
 
 		// w = (w)*(norm(w)*sign(dot(w,u)+B(i))/((dot(w,u)+B(i))^2)
-		vector_float_times(&W, (k*norm_w*sig/((dot_W_u+B_i)*(dot_W_u+B_i))));
+		vector_float_times(&W, (MOUNTAIN_K*norm_w*sig/((dot_W_u+B_i)*(dot_W_u+B_i))));
 		vector_float_subtract(grad, &W);						// d = d - W
 	}
 }
@@ -530,12 +523,75 @@ void mountain_gradient(const matrix_float * A, const vector_float * B, const vec
 void cost_gradient(const matrix_float * H, const vector_float * c, const vector_float * u, vector_float * grad) {
 	// done, not tested
 	// df = @(u) H*u+c;                % gradient of cost function
+
 	if((H->width != u->length) || (grad->length != H->height) || (u->orientation != 0) || (c->orientation != 0) || grad->orientation != 0){
 		usart4PutString("ERROR in cost_gradient(), dimentions does not agree\n\r");
 		return;
 	}
-
+	vector_float_set_zero(grad);			// added
 	matrix_float_mul_vec_right(H, u, grad);
 	vector_float_add(grad, c);
 }
+
+void run_simulation(){	// r
+	// working as in Matlab
+
+	/*
+	usart4PutString("----------------Run_simulation running 2.-----------------------------\n\r");
+
+	float obsticle_x = -1;
+	float obsticle_y = 5;
+	float obsticle_radius = 1.5;
+
+	int i;
+	vector_float_set_zero(&pr_x0);
+
+	// create trajectory, done
+	matrix_float_set_zero(&pr_Tr_red);
+	for(i = 1; i <= T; i++){
+		matrix_float_set(&pr_Tr_red, i, 1, final_x*i/T);
+		matrix_float_set(&pr_Tr_red, i, 4, final_y*i/T);
+	}
+
+
+	*//* CONSTRAINTS *//*
+
+	constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
+	constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
+
+	float k, q, sig;
+	my_constraint(&obsticle_x, &obsticle_y, &obsticle_radius, &k, &q, &sig);
+
+//	Ac = sig*(-k*Bcx + Bcy);
+//	Bc = sig*(-k*Acx*x0 + Acy*x0 - q);
+
+	matrix_float_times(&pr_Bcx, -k);
+	matrix_float_add(&pr_Bcx, &pr_Bcy);
+	if(sig != 1) matrix_float_times(&pr_Bcx, sig);
+	matrix_float_copy(&pr_Ac, &pr_Bcx);
+
+	matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &pr_Bc);
+	vector_float_times(&pr_Bc, -k);
+	matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
+	vector_float_add(&pr_Bc, &pr_Acy_x0);
+	vector_float_set_all(&pr_Acy_x0, -q);
+	vector_float_add(&pr_Bc, &pr_Acy_x0);
+	if(sig != 1) vector_float_times(&pr_Bc, sig);
+
+//	Tr_desired=reshape(Tr_desired',lastTime*6, 1)
+	vector_float Tr_vec = {T*6, 0, (float*) pr_Tr_red_arr, "Tr_vec - reshaped pr_Tr_red, run_simulation"};
+	vector_float_print(&pr_x0);
+
+//  c = (Qv*Bv)'*(Av*x0-Tr_desired);
+	matrix_float_mul_vec_right(&pr_Av, &pr_x0, &pr_Av_x0);
+	vector_float_subtract(&pr_Av_x0, &Tr_vec);
+	matrix_float_mul_vec_right(&Qv_Bv_t, &pr_Av_x0, &pr_c);
+
+	vector_float_set_all(&pr_Uv, 0);				// should be pr_Uv from last computing
+	my_quadprog(&pr_Hv, &pr_c, &pr_Ac, &pr_Bc, &pr_Uv);
+
+	vector_float_print(&pr_Uv);
+	*/
+}
+
 
