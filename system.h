@@ -59,10 +59,10 @@ typedef struct {
 
 	float elevatorReference[5];
 	float aileronReference[5];
-	float obsticle_n;
-	float obsticle_x[MAX_BLOBS];
-	float obsticle_y[MAX_BLOBS];
-	float obsticle_r[MAX_BLOBS];
+	float obstacle_n;
+	float obstacle_x[MAX_BLOBS];
+	float obstacle_y[MAX_BLOBS];
+	float obstacle_r[MAX_BLOBS];
 
 } comm2mpcMessage_t;
 

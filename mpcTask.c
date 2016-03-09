@@ -12,10 +12,12 @@
 #include "CMatrixLib.h"
 #include "predictive.h"	// ok?
 #define OBSTACLES 1			// if running Honza's code
-#define T_MAX 10			// last value in pr_block
+#define T_MAX 100			// last value in pr_block
 
 void mpcTask(void *p) {
 
+	usart4PutString("mpcTask() starting 1\r\n");		// doesn't do anything
+	vTaskDelay(100);
 	/* -------------------------------------------------------------------- */
 	/*	Create handlers for all systems										*/
 	/* -------------------------------------------------------------------- */
@@ -30,14 +32,23 @@ void mpcTask(void *p) {
 	kalman2mpcMessage_t kalman2mpcMessage;
 	comm2mpcMessage_t comm2mpcMessage;
 
-	vTaskDelay(100);
+//	prepare();
+
+//	vTaskDelay(100);
+//	usart4PutString("mpcTask() starting 2\r\n");		// doesn't do anything
 
 	while (1) {
 
 		/* -------------------------------------------------------------------- */
 		/*	If there is a message from commTask									*/
 		/* -------------------------------------------------------------------- */
+
+
+
+		/*
 		while (xQueueReceive(comm2mpcQueue, &comm2mpcMessage, 0)) {
+			usart4PutString("---------something recieved-----------\n\r");
+
 
 			if (comm2mpcMessage.messageType == SETPOINT) {
 				if(OBSTACLES){
@@ -71,6 +82,14 @@ void mpcTask(void *p) {
 							matrix_float_set(pr_handler->Tr_full, j*granularity+1+i, 2, matrix_float_get(pr_handler->Tr_full, j*granularity+i, 2) + step_y);
 						}
 					}
+
+					*//* RECIEVING TRAJECTORY *//*
+					for(i = 1; i < 4; i++){
+
+					}
+
+
+
 				} else {
 					int i, j;
 					float step;
@@ -103,25 +122,49 @@ void mpcTask(void *p) {
 						}
 					}
 				}
+			} else if (comm2mpcMessage.messageType == BLOBS) {
+				//done, not tested
+				usart4PutString("---------mpcTask() recieving blobs-----------");
+
+				pr_handler->obstacle_n = comm2mpcMessage.obstacle_n;
+				memcpy(&pr_handler->obstacle_x, &comm2mpcMessage.obstacle_x, comm2mpcMessage.obstacle_n*sizeof(float));
+				memcpy(&pr_handler->obstacle_y, &comm2mpcMessage.obstacle_y, comm2mpcMessage.obstacle_n*sizeof(float));
+				memcpy(&pr_handler->obstacle_r, &comm2mpcMessage.obstacle_r, comm2mpcMessage.obstacle_n*sizeof(float));
+
+				*//* RECIEVING BLOBS *//*
+				int i;
+				for(i = 0; i < pr_handler->obstacle_n; i++){
+					usart_string_int_print("OBSTACLE ", i);
+					usart_string_float_print("obstacle x = ", &(pr_handler->obstacle_x[i]));
+					usart_string_float_print("obstacle y = ", &(pr_handler->obstacle_y[i]));
+					usart_string_float_print("obstacle r = ", &(pr_handler->obstacle_r[i]));
+				}
+
+
 			}
 		}
+		*/
+
 
 		/* -------------------------------------------------------------------- */
 		/*	If there is a message from kalmanTask								*/
 		/* -------------------------------------------------------------------- */
 		if (xQueueReceive(kalman2mpcQueue, &kalman2mpcMessage, 0)) {
-			if(OBSTACLES){
+			if(0){		// OBSTACLES
 
 				// set initial condition
-				vector_float_set(pr_handler->x0, 1, vector_float_get(&kalman2mpcMessage.aileronData , 1));
+				pr_handler->position_x = vector_float_get(&kalman2mpcMessage.aileronData , 1);
+				pr_handler->position_y = vector_float_get(&kalman2mpcMessage.elevatorData , 1);
+
+				vector_float_set(pr_handler->x0, 1, 0);
 				vector_float_set(pr_handler->x0, 2, vector_float_get(&kalman2mpcMessage.aileronData , 2));
 				vector_float_set(pr_handler->x0, 3, vector_float_get(&kalman2mpcMessage.aileronData , 3));
-				vector_float_set(pr_handler->x0, 4, vector_float_get(&kalman2mpcMessage.elevatorData, 1));
+				vector_float_set(pr_handler->x0, 4, 0);
 				vector_float_set(pr_handler->x0, 5, vector_float_get(&kalman2mpcMessage.elevatorData, 2));
 				vector_float_set(pr_handler->x0, 6, vector_float_get(&kalman2mpcMessage.elevatorData, 3));
 
-				pr_handler->error_x = vector_float_get(&kalman2mpcMessage.aileronData, 5);
-				pr_handler->error_y = vector_float_get(&kalman2mpcMessage.elevatorData, 5);
+				pr_handler->error_x = kalman2mpcMessage.aileronData[4];
+				pr_handler->error_y = kalman2mpcMessage.aileronData[4];
 
 				// filter the reference
 				filterReferenceTrajectory(elevatorMpcHandler);

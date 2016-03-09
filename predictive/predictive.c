@@ -11,10 +11,10 @@
  *
  *  where handler->max_speed is assigned?
  *  where the computed error is assigned?
+ *	mpcTask doesn't start
  *
  */
 
-// vTaskDelay
 
 // vector orientation: 0 - height, 1 - width
 
@@ -23,19 +23,18 @@
 //#include "mpc.h"
 
 //#define T 4	//prediction horizon, will sed all Ts?, 15
-#define FLOAT_MAX 1000000
 
 // constant parameters
-#define pr_dt 0.01148
-#define pr_q 300
-#define pr_p 1e-6
+#define pr_dt 0.01148		// time step of the system
+#define pr_q 300			// cost of position error
+#define pr_p 1e-6			// cost of inputs
 #define MOUNTAIN_K 1000		// the value of mountain gradient function
 
-#define GRAD_STEP 50	// grad step
+#define GRAD_STEP 50
 #define grad_iterations 200
 
-#define OBSTACLES 0		// if recieving obstacles
-#define MAX_SPEED 1		// in m/dt
+#define OBSTACLES 1			// if recieving obstacles
+#define MAX_SPEED 1e-5		// in m/dt, 1 for testing
 #define pr_B_k 0.000050719	// matrix B constant
 
 // constants for testing
@@ -46,16 +45,14 @@ int first_time_running = 1;
 
 // constant matrixes allocations, arrays in separate file predictiveMatrices.c
 
-const matrix_float pr_A  = {  6,   6, (float*) pr_A_arr, "pr_A"};		//set
-const matrix_float pr_B  = {  2,   6, (float*) pr_B_arr, "pr_B"};		//set
-const matrix_float pr_test = {2, 2, (float*) pr_test_arr, "pt_test"};
+const matrix_float pr_A  = {  6,   6, (float*) pr_A_arr, "pr_A"};		// A matrix of the system, PM
+const matrix_float pr_B  = {  2,   6, (float*) pr_B_arr, "pr_B"};		// B matrix of the system, PM
 
-const vector_float pr_block = {T,  1, (float*) pr_block_arr, "pr_block, which time predictions are computed with."};
-const matrix_float pr_Av = {  6, 6*T, (float*) pr_Av_arr, "pr_Av"};	// in set_matrixes(), tested
-const matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};	// in set_matrixes(), tested
-const matrix_float pr_Hv = {2*T, 2*T, (float*) pr_Hv_arr, "pr_H"};	// done in set_matrixes(), nto tested
-const vector_float pr_Pv = {2*T,   0, (float*) pr_Pv_arr, "pr_Pv, diag vector"};		// done in set_matrixes(), nto tested
-const matrix_float pr_Qv = {6*T, 6*T, (float*) pr_Qv_arr, "pr_Qv"};
+const vector_float pr_block = {T,  1, (float*) pr_block_arr, "pr_block, which time predictions are computed with."};	// PM
+const matrix_float pr_Av = {  6, 6*T, (float*) pr_Av_arr, "pr_Av"};	// A_roof of all predicted states, PM
+const matrix_float pr_Bv = {2*T, 6*T, (float*) pr_Bv_arr, "pr_Bv"};	// B_roof of all predicted states, PM
+const matrix_float pr_Hv = {2*T, 2*T, (float*) pr_Hv_arr, "pr_H"};	// H_roof, PM
+//const matrix_float pr_Qv = {6*T, 6*T, (float*) pr_Qv_arr, "pr_Qv"};
 const matrix_float Qv_Bv_t={6*T, 2*T, (float*) Qv_Bv_t_arr, "Qv_Bv_t - (Qv*Bv)'"};
 
 //	dynamic matrix allocations
@@ -92,26 +89,52 @@ vector_float pr_x0 = {  6, 0, (float*) pr_x0_arr, "pr_x0"};
 
 prHandler pr_handler;
 
+void test_handler(){	//h
+	// working
+
+	usart4PutString("------test_handler() running------\n\r");
+	initializePrHandler();
+	vector_float_set_zero(&pr_Uv);
+	pr_handler.type = 2;
+	pr_handler.position_reference_x = 0;
+	pr_handler.position_reference_y = 20;
+
+//	create_Tr_reference(&pr_handler);
+//	matrix_float_print(pr_handler.Tr_reduced);
+//
+//	vector_float_set_zero(pr_handler.x0);
+
+	pr_handler.obstacle_x[0] = -1;
+	pr_handler.obstacle_y[0] = -1;
+	pr_handler.obstacle_r[0] = 0.5;
+	pr_handler.obstacle_x[1] = -5;
+	pr_handler.obstacle_y[1] = 2;
+	pr_handler.obstacle_r[1] = 1;
+	pr_handler.obstacle_n = 0;
+
+	float action_x, action_y;
+
+	usart4PutString("s\n\r");
+	pr_calculateMPC(&pr_handler, &action_x, &action_y);
+	usart4PutString("e\n\r");
+
+	usart_string_float_print("action_x = ", &action_x);
+	usart_string_float_print("action_y = ", &action_y);
+}
+
 int pr_calculateMPC( prHandler * handler, float * action_x, float * action_y) {
 	usart4PutString("------pr_calculateMPC running 2.------\n\r");
-	// need to allocate tr_reduced
 
-	if(handler->type == 0) {			// uninitialized
+	if(handler->type == 1) {			// set point
+		compute_Tr_reduced(handler);
+	} else if(handler->type == 2){		// trajectory
+		create_Tr_reference(handler);
+	} else {							// uninitialized
 		usart4PutString("ERROR in pr_calculateMPC() - uninitialized handler type.\n\r");
 		return 0;
-	} else if(handler->type == 1){		// trajectory
-		compute_Tr_reduced(handler);
-	} else{								// set point
-		create_Tr_reference(handler);
-		compute_Tr_reduced(handler);
-	}
-	if(!OBSTACLES){
-		handler->obsticle_x = 1000;
-		handler->obsticle_y = 1000;
-		handler->obsticle_r = 1;
 	}
 
-	int i, N = handler->obsticle_n;
+	int i, N = handler->obstacle_n;
 
 	/* CONSTRAINTS */
 
@@ -121,53 +144,58 @@ int pr_calculateMPC( prHandler * handler, float * action_x, float * action_y) {
 	matrix_float Ac = {2*T, N*T, (float*) Ac_arr, "Ac - constraint matrix for all obstacles"};
 	vector_float Bc = {N*T,   0, (float*) Bc_arr, "Bc - constraint matrix for all obstacles"};
 
-	// for each obstacle
-	float Ac_tmp_arr[T*(2*T)];
-	float Bc_tmp_arr[T];
-	matrix_float Ac_tmp = {2*T, T, (float*) Ac_tmp_arr, "Ac_tmp - constraint matrix for one obstacle"};
-	vector_float Bc_tmp = {  T, 0, (float*) Bc_tmp_arr, "Bc_tmp - constraint matrix for one obstacle"};
+	if(handler->obstacle_n > 0){
 
-	float k, q, sig;
+		// for each obstacle
+		float Ac_tmp_arr[T*(2*T)];
+		float Bc_tmp_arr[T];
+		matrix_float Ac_tmp = {2*T, T, (float*) Ac_tmp_arr, "Ac_tmp - constraint matrix for one obstacle"};
+		vector_float Bc_tmp = {  T, 0, (float*) Bc_tmp_arr, "Bc_tmp - constraint matrix for one obstacle"};
 
-	for(i = 0; i < N; i++){
-		my_constraint(&(handler->obsticle_x[i]), &(handler->obsticle_y[i]), &(handler->obsticle_r[i]), &k, &q, &sig);
+		float k, q, sig;
 
-		// needs to be coputed, changing every loop
-		constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
-		constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
+		for(i = 0; i < N; i++){
+			my_constraint(&(handler->obstacle_x[i]), &(handler->obstacle_y[i]), &(handler->obstacle_r[i]), &k, &q, &sig);
 
-		// compute Ac and Bc
-		matrix_float_times(&pr_Bcx, -k);
-		matrix_float_add(&pr_Bcx, &pr_Bcy);
-		if(sig != 1) matrix_float_times(&pr_Bcx, sig);
-		matrix_float_copy(&Ac_tmp, &pr_Bcx);
+			// needs to be coputed, changing every loop
+			constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
+			constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
 
-		matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &Bc_tmp);
-		vector_float_times(&Bc_tmp, -k);
-		matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
-		vector_float_add(&Bc_tmp, &pr_Acy_x0);
-		vector_float_set_all(&pr_Acy_x0, -q);
-		vector_float_add(&Bc_tmp, &pr_Acy_x0);
-		if(sig != 1) vector_float_times(&Bc_tmp, sig);
+			// compute Ac and Bc
+			matrix_float_times(&pr_Bcx, -k);
+			matrix_float_add(&pr_Bcx, &pr_Bcy);
+			if(sig != 1) matrix_float_times(&pr_Bcx, sig);
+			matrix_float_copy(&Ac_tmp, &pr_Bcx);
 
-		matrix_float_set_submatrix(&Ac, &Ac_tmp, 1, i*T+1);
-		vector_float_set_subvector(&Bc, &Bc_tmp, i*T+1);
+			matrix_float_mul_vec_right(&pr_Acx, &pr_x0, &Bc_tmp);
+			vector_float_times(&Bc_tmp, -k);
+			matrix_float_mul_vec_right(&pr_Acy, &pr_x0, &pr_Acy_x0);
+			vector_float_add(&Bc_tmp, &pr_Acy_x0);
+			vector_float_set_all(&pr_Acy_x0, -q);
+			vector_float_add(&Bc_tmp, &pr_Acy_x0);
+			if(sig != 1) vector_float_times(&Bc_tmp, sig);
+
+			matrix_float_set_submatrix(&Ac, &Ac_tmp, 1, i*T+1);
+			vector_float_set_subvector(&Bc, &Bc_tmp, i*T+1);
+		}
 	}
-
 
 //	reshape Tr
 	vector_float Tr_vec = {T*6, 0, (float*) pr_Tr_red_arr, "Tr_vec - reshaped pr_Tr_red, pr_calculateMPC()"};
-
 
 //  c = (Qv*Bv)'*(Av*x0-Tr_desired);
 	matrix_float_mul_vec_right(&pr_Av, &pr_x0, &pr_Av_x0);
 	vector_float_subtract(&pr_Av_x0, &Tr_vec);
 	matrix_float_mul_vec_right(&Qv_Bv_t, &pr_Av_x0, &pr_c);
 
-	my_quadprog(&pr_Hv, &pr_c, &Ac, &Bc, &pr_Uv);
+	my_quadprog(&pr_Hv, &pr_c, &Ac, &Bc, &pr_Uv, N);
 
 	*action_x = vector_float_get(&pr_Uv, 1) - handler->error_x/pr_B_k;
 	*action_y = vector_float_get(&pr_Uv, 2) - handler->error_y/pr_B_k;
+
+	vector_float_print(&pr_Uv);
+
+	return 1;
 }
 
 void prepare(){
@@ -188,26 +216,17 @@ prHandler * initializePrHandler() {
 	pr_handler.position_reference_x = 0;
 	pr_handler.position_reference_y = 0;
 
-	float obsticle_x[MAX_BLOBS];
-	float obsticle_y[MAX_BLOBS];
-	float obsticle_r[MAX_BLOBS];
+	pr_handler.position_x = 0;
+	pr_handler.position_y = 0;
 
-	pr_handler.obsticle_x = (float*)obsticle_x;
-	pr_handler.obsticle_y = obsticle_y;
-	pr_handler.obsticle_r = obsticle_r;
-	pr_handler.obsticle_n = -1;
-
-	if(first_time_running) {
-		prepare();
-		first_time_running = 0;
-	}
+	pr_handler.obstacle_n = -1;
 
 	pr_handler.type = 0;	// 1 for trajectory, 2 for reference, 0 for not initializes
 	return &pr_handler;
 }
 
 void compute_Tr_reduced(prHandler * handler){
-	// done, not tested
+	// done, tested
 	int i, full_idx;
 	for(i = 1; i <= T; i++){
 		full_idx = vector_float_get(&pr_block, i);
@@ -217,72 +236,37 @@ void compute_Tr_reduced(prHandler * handler){
 }
 
 void create_Tr_reference(prHandler * handler){
-	// done, not tested
-	float x0 = vector_float_get(&pr_x0, 1);
-	float y0 = vector_float_get(&pr_x0, 4);
+	// done, tested
+	// computes trajectory not from origin
+	usart4PutString("------create_Tr_reference() running 2.------\n\r");
+
+	float x0 = handler->position_x;
+	float y0 = handler->position_y;
 	float dx = (handler->position_reference_x-x0);
 	float dy = (handler->position_reference_y-y0);
 	float distance = sqrt(dx*dx+dy*dy);
 	float dx_n = MAX_SPEED*(dx/distance);
 	float dy_n = MAX_SPEED*(dy/distance);
-	float lastTime = vector_float_get(&pr_block, T);
-	int length, i;
+	int i;
 	float step_dx, step_dy, step;
 
-	if(distance/MAX_SPEED > lastTime){
-		length = distance/MAX_SPEED;
-	} else {
-		length = lastTime;
-	}
 	for(i = 1; i <= T; i++){
 		step = vector_float_get(&pr_block, i);
 		step_dx = step*dx_n;
-		if(abs(step_dx) < abs(dx)){
-			matrix_float_set(&pr_Tr_red, i, 1, step_dx);
+
+		if(my_abs(step_dx) < my_abs(dx)){
+			matrix_float_set(handler->Tr_reduced, i, 1, step_dx);
 		} else{
-			matrix_float_set(&pr_Tr_red, i, 1, dx);
+			matrix_float_set(handler->Tr_reduced, i, 1, dx);
 		}
+
 		step_dy = step*dy_n;
-		if(abs(step_dy) < abs(dy)){
-			matrix_float_set(&pr_Tr_red, i, 4, step_dy);
+		if(my_abs(step_dy) < my_abs(dy)){
+			matrix_float_set(handler->Tr_reduced, i, 4, step_dy);
 		} else{
-			matrix_float_set(&pr_Tr_red, i, 4, dy);
+			matrix_float_set(handler->Tr_reduced, i, 4, dy);
 		}
 	}
-}
-
-
-void test_handler(){	//h
-	// working
-	prHandler handler;
-	int i;
-	prepare();
-
-	float Tr_arr[2*T], x0_arr[6];
-	matrix_float Tr = {2, T, (float *) Tr_arr, "Tr - desired trajectory from handler"};
-	vector_float x0 = {6, 0, (float *) x0_arr, "x0 -  initial condition from handler"};
-	for(i = 1; i <= T; i++){
-		matrix_float_set(&Tr, i, 1, final_x*i/T);
-		matrix_float_set(&Tr, i, 2, final_y*i/T);
-	}
-	vector_float_set_zero(&x0);
-
-	handler.obsticle_x[0] = -1;
-	handler.obsticle_y[0] = 5;
-	handler.obsticle_r[0] = 1.5;
-	handler.obsticle_n = 1;
-	handler.x0 = &x0;
-	handler.Tr_reduced = &Tr;
-
-
-	float action_x, action_y;
-
-	usart4PutString("s\n\r");
-	pr_calculateMPC(&handler, &action_x, &action_y);
-	usart4PutString("e\n\r");
-
-//	usart_string_float_print("action_x = ", &action_x);
-//	usart_string_float_print("action_y = ", &action_y);
 }
 
 
@@ -338,7 +322,6 @@ int check(const matrix_float * A, const vector_float * B, const vector_float * u
 //	usart4PutString("check running.\n\r");
 	int16_t N = B->length;
 	float A_u_arr[N];	//array for A*u
-	float Sum_arr[N];
 
 	//getting the product of A*u into A_u
 	vector_float A_u = {N, 0, (float*) A_u_arr, "A_u"};
@@ -347,8 +330,6 @@ int check(const matrix_float * A, const vector_float * B, const vector_float * u
 	//getting A*u + B into Sum
 	vector_float_add(&A_u, B); //the final vector to A_u
 
-
-	int correct = 1;
 	int i;
 	for(i = 1; i <= N; i++){
 		float tmp = vector_float_get(&A_u, i);
@@ -419,7 +400,7 @@ void my_constraint(float * x0, float * y0, float * radius, float * k, float * q,
 
 	*k = -((float)fx0/(float)fy0);
 
-	if(y0 > 0){
+	if(*y0 > 0){
 		*sig = 1;
 	} else {
 		*sig = -1;
@@ -455,25 +436,27 @@ int sign(float num){
 	}
 }
 
+float my_abs(float num){
+	if(num < 0) return -num;
+	else return num;
+}
+
 
 // ------------------------------------------------- QUADRATIC PROGRAMMING ---------------------------------------------
 
 
-void my_quadprog(const matrix_float * H, const matrix_float * c, const matrix_float * A, const vector_float * B, vector_float * u){
+void my_quadprog(const matrix_float * H, const matrix_float * c, const matrix_float * A, const vector_float * B, vector_float * u, const int obstacle_n){
 
 	int i, N = u->length;
 	float grad_arr[N];
 	float grad_mountain_arr[N];
 
-	vector_float grad = {N, 0, (float*) grad_arr, "grad"};
+	vector_float grad = {N, 0, (float*) grad_arr, "cost grad"};
 	vector_float grad_mountain = {N, 0, (float*) grad_mountain_arr, "grad_mountain"};
 
-
-	correct(A, B, u);
 	for(i = 1; i <= grad_iterations; i++){
-
 		cost_gradient(H, c, u, &grad);
-		if(OBSTACLES) {
+		if(obstacle_n > 0) {
 			mountain_gradient(A, B, u, &grad_mountain);
 			vector_float_add(&grad, &grad_mountain);
 		}
@@ -528,6 +511,8 @@ void cost_gradient(const matrix_float * H, const vector_float * c, const vector_
 		usart4PutString("ERROR in cost_gradient(), dimentions does not agree\n\r");
 		return;
 	}
+
+
 	vector_float_set_zero(grad);			// added
 	matrix_float_mul_vec_right(H, u, grad);
 	vector_float_add(grad, c);
@@ -539,9 +524,9 @@ void run_simulation(){	// r
 	/*
 	usart4PutString("----------------Run_simulation running 2.-----------------------------\n\r");
 
-	float obsticle_x = -1;
-	float obsticle_y = 5;
-	float obsticle_radius = 1.5;
+	float obstacle_x = -1;
+	float obstacle_y = 5;
+	float obstacle_radius = 1.5;
 
 	int i;
 	vector_float_set_zero(&pr_x0);
@@ -560,7 +545,7 @@ void run_simulation(){	// r
 	constraint_matrixes(&pr_Bv, &pr_Bcx, &pr_Bcy);
 
 	float k, q, sig;
-	my_constraint(&obsticle_x, &obsticle_y, &obsticle_radius, &k, &q, &sig);
+	my_constraint(&obstacle_x, &obstacle_y, &obstacle_radius, &k, &q, &sig);
 
 //	Ac = sig*(-k*Bcx + Bcy);
 //	Bc = sig*(-k*Acx*x0 + Acy*x0 - q);

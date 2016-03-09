@@ -82,7 +82,7 @@ matrix_float velkaMatice;
 float velkeeePole[10000];
 
 void commTask(void *p) {
-
+	usart4PutString("commTask() starting\r\n");
 	char crcOut = 0;
 
 	// message from mpcTask
@@ -97,14 +97,14 @@ void commTask(void *p) {
 	/* -------------------------------------------------------------------- */
 	/*	Needed for receiving from xMega										*/
 	/* -------------------------------------------------------------------- */
-//	char payloadSize = 0;
+	char payloadSize = 0;
 	char messageBuffer[XMEGA_BUFFER_SIZE];
 	char inChar;
-//	int bytesReceived;
+	int bytesReceived;
 	char messageReceived = 0;
-//	char receivingMessage = 0;
-//	int receiverState = 0;
-//	char crcIn = 0;
+	char receivingMessage = 0;
+	int receiverState = 0;
+	char crcIn = 0;
 
 	velkaMatice.width = 10;
 	velkaMatice.height = 10;
@@ -113,6 +113,7 @@ void commTask(void *p) {
 
 
 	matrix_float_set_all(&velkaMatice, 3.141592653);
+
 
 	while (1) {
 
@@ -147,7 +148,7 @@ void commTask(void *p) {
 				break;
 
 			case 99:			//c
-//				test_constraint();
+				usart4PutChar(99);
 				break;
 
 			case 115: 			//s
@@ -159,13 +160,12 @@ void commTask(void *p) {
 				break;
 
 			default:			//blikani
-				led_toggle();
 				break;
 			}
 
 
 
-			/*
+
 			if (receivingMessage) {
 
 				// expecting to receive the payload size
@@ -223,13 +223,14 @@ void commTask(void *p) {
 					bytesReceived = 0;
 				}
 			}
-		*/
-		}
+
+
 
 		/* -------------------------------------------------------------------- */
 		/*	If there is a message from uart										*/
 		/* -------------------------------------------------------------------- */
 		if (messageReceived) {
+
 
 			int idx = 0;
 
@@ -335,7 +336,9 @@ void commTask(void *p) {
 
 				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
 
-			} else if (messageId == 'B') {
+			} else if (messageId == 'B') {	// Blobs
+				usart4PutString("\n\r");
+				usart4PutString("BLOB-commTask\n\r");
 
 				comm2mpcMessage_t comm2mpcMessage;
 
@@ -343,27 +346,25 @@ void commTask(void *p) {
 
 				tempFloat = readFloat(messageBuffer, &idx);
 				if (fabs(tempFloat) < 25)
-					comm2mpcMessage.obsticle_n = tempFloat;
+					comm2mpcMessage.obstacle_n = tempFloat;
 
-				// receive the elevator trajectory key-point
 				int i;
-				for (i = 0; i < comm2mpcMessage.obsticle_n; i++) {
+				for (i = 0; i < comm2mpcMessage.obstacle_n; i++) {
 
 					tempFloat = readFloat(messageBuffer, &idx);
 					if (fabs(tempFloat) < 25)
-						comm2mpcMessage.obsticle_x[i] = tempFloat;
+						comm2mpcMessage.obstacle_x[i] = tempFloat;
 
 					tempFloat = readFloat(messageBuffer, &idx);
 					if (fabs(tempFloat) < 25)
-						comm2mpcMessage.obsticle_y[i] = tempFloat;
+						comm2mpcMessage.obstacle_y[i] = tempFloat;
 
 					tempFloat = readFloat(messageBuffer, &idx);
 					if (fabs(tempFloat) < 25)
-						comm2mpcMessage.obsticle_r[i] = tempFloat;
+						comm2mpcMessage.obstacle_r[i] = tempFloat;
 				}
 
-				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
-
+				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);	// doesnt work
 			}
 
 			messageReceived = 0;
@@ -424,4 +425,4 @@ void commTask(void *p) {
 			sendChar(crcOut, &crcOut);
 		}
 	}
-}
+}}
