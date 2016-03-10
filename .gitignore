@@ -65,7 +65,6 @@ STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_dac.h
 STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_can.h
 STM32F4xx_StdPeriph_Driver/src/stm32f4xx_wwdg.c
 STM32F4xx_StdPeriph_Driver/src/stm32f4xx_sai.c
-FreeRTOS/FreeRTOSConfig.h
 FreeRTOS/Port/arm_comm.h
 cmsis_lib/source/stm32f4xx_usart.c
 FreeRTOS/Source/include/event_groups.h

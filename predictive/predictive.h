@@ -10,8 +10,8 @@
 typedef struct {
 
 	vector_float * x0;
-	matrix_float * Tr_reduced;	// size [T x 6]
-	matrix_float * Tr_full;		// size [T x 2]
+	matrix_float * Tr_reduced;	// size [T x 6], relative
+	matrix_float * Tr_full;		// size [T x 2], absolute
 
 	float error_x;
 	float error_y;

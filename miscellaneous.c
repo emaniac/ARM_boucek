@@ -139,7 +139,7 @@ void matrix_float_print(const matrix_float * a) {
 
 		for (j = 1; j <= a->width; j++) {
 
-			sprintf(temp, "%6.3f", matrix_float_get(a, i, j));
+			sprintf(temp, "%6.6f", matrix_float_get(a, i, j));
 			usart4PutString(temp);
 
 			if (j < a->width)

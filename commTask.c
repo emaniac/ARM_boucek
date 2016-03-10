@@ -82,7 +82,7 @@ matrix_float velkaMatice;
 float velkeeePole[10000];
 
 void commTask(void *p) {
-	usart4PutString("commTask() starting\r\n");
+	usart4PutString("commTask() start\r\n");
 	char crcOut = 0;
 
 	// message from mpcTask
@@ -151,8 +151,12 @@ void commTask(void *p) {
 				usart4PutChar(99);
 				break;
 
-			case 115: 			//s
-//				set_matrixes();
+			case 'x': 			//x
+				state();
+				break;
+
+			case 'm': 			//m
+				test_mpc();
 				break;
 
 			case 104: 			//h

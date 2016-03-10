@@ -10,13 +10,13 @@
 #include "mpc/elevator/elevatorMpc.h"
 #include "mpc/aileron/aileronMpc.h"
 #include "CMatrixLib.h"
+#include "predictiveMatrices.h"
 #include "predictive.h"	// ok?
 #define OBSTACLES 1			// if running Honza's code
-#define T_MAX 100			// last value in pr_block
 
 void mpcTask(void *p) {
 
-	usart4PutString("mpcTask() starting 1\r\n");		// doesn't do anything
+	usart4PutString("mpcTask() start\r\n");		// doesn't do anything
 	vTaskDelay(100);
 	/* -------------------------------------------------------------------- */
 	/*	Create handlers for all systems										*/
@@ -32,7 +32,7 @@ void mpcTask(void *p) {
 	kalman2mpcMessage_t kalman2mpcMessage;
 	comm2mpcMessage_t comm2mpcMessage;
 
-//	prepare();
+	prepare();
 
 //	vTaskDelay(100);
 //	usart4PutString("mpcTask() starting 2\r\n");		// doesn't do anything
@@ -45,16 +45,20 @@ void mpcTask(void *p) {
 
 
 
-		/*
-		while (xQueueReceive(comm2mpcQueue, &comm2mpcMessage, 0)) {
-			usart4PutString("---------something recieved-----------\n\r");
 
+		while (xQueueReceive(comm2mpcQueue, &comm2mpcMessage, 0)) {
 
 			if (comm2mpcMessage.messageType == SETPOINT) {
 				if(OBSTACLES){
 					pr_handler->type = 1;
-					pr_handler->position_reference_x = comm2mpcMessage.elevatorReference[0];	// predictive
+					pr_handler->position_reference_x = comm2mpcMessage.aileronReference[0];	// predictive
 					pr_handler->position_reference_y = comm2mpcMessage.elevatorReference[0];	// predictive
+
+					create_Tr_reference(pr_handler);
+
+					usart4PutString("---mpcTask() recieving setpoint.\n\r");
+					usart_string_float_print("X desired = ", &pr_handler->position_reference_x);
+					usart_string_float_print("Y desired = ", &pr_handler->position_reference_y);
 				} else{
 					// copy the incoming set point/s into the local vector
 					vector_float_set_to(elevatorMpcHandler->position_reference, comm2mpcMessage.elevatorReference[0]);
@@ -64,7 +68,7 @@ void mpcTask(void *p) {
 				if(OBSTACLES){
 					int i, j;
 					float step;
-					int granularity = (T_MAX+4)/5;
+					int granularity = 50;
 					pr_handler->type = 2;
 
 					// for all key-point in the aileron reference
@@ -83,13 +87,20 @@ void mpcTask(void *p) {
 						}
 					}
 
-					*//* RECIEVING TRAJECTORY *//*
-					for(i = 1; i < 4; i++){
+					compute_Tr_reduced(pr_handler);
 
+					/* RECIEVING TRAJECTORY print*/
+					float tmp_float = 0;
+					usart4PutString("---mpcTask() recieving trajectory.0");
+					for(i = 1; i <= T_MAX; i++){
+						usart_string_int_print("---i = ", i);
+
+						tmp_float = matrix_float_get(pr_handler->Tr_full, i, 1);
+						usart_string_float_print("x = ", &tmp_float);
+
+						tmp_float = matrix_float_get(pr_handler->Tr_full, i, 2);
+						usart_string_float_print("y = ", &tmp_float);
 					}
-
-
-
 				} else {
 					int i, j;
 					float step;
@@ -124,14 +135,14 @@ void mpcTask(void *p) {
 				}
 			} else if (comm2mpcMessage.messageType == BLOBS) {
 				//done, not tested
-				usart4PutString("---------mpcTask() recieving blobs-----------");
+				usart4PutString("---------mpcTask() recieving blobs-----------\n\r");
 
 				pr_handler->obstacle_n = comm2mpcMessage.obstacle_n;
 				memcpy(&pr_handler->obstacle_x, &comm2mpcMessage.obstacle_x, comm2mpcMessage.obstacle_n*sizeof(float));
 				memcpy(&pr_handler->obstacle_y, &comm2mpcMessage.obstacle_y, comm2mpcMessage.obstacle_n*sizeof(float));
 				memcpy(&pr_handler->obstacle_r, &comm2mpcMessage.obstacle_r, comm2mpcMessage.obstacle_n*sizeof(float));
 
-				*//* RECIEVING BLOBS *//*
+				/* RECIEVING BLOBS, working */
 				int i;
 				for(i = 0; i < pr_handler->obstacle_n; i++){
 					usart_string_int_print("OBSTACLE ", i);
@@ -139,11 +150,9 @@ void mpcTask(void *p) {
 					usart_string_float_print("obstacle y = ", &(pr_handler->obstacle_y[i]));
 					usart_string_float_print("obstacle r = ", &(pr_handler->obstacle_r[i]));
 				}
-
-
 			}
 		}
-		*/
+
 
 
 		/* -------------------------------------------------------------------- */

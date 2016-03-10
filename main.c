@@ -48,7 +48,7 @@ void testTask1(void) {
 //	rekurze(4);
 
 	vTaskDelay(100);
-	usart4PutString("testTask1() start 1\n\r");
+	usart4PutString("testTask 1() start 1\n\r");
 	int i = 0;
 
 	while(1) {
@@ -61,7 +61,7 @@ void testTask2(void) {
 //	rekurze(4);
 
 	vTaskDelay(100);
-	usart4PutString("testTask2() start 1\n\r");
+	usart4PutString("testTask 2() start 1\n\r");
 	int i = 0;
 
 	while(1) {
@@ -82,28 +82,30 @@ int main(void) {
 	/* -------------------------------------------------------------------- */
 	/*	Start the communication task routine								*/
 	/* -------------------------------------------------------------------- */
-//	xTaskCreate(commTask, (char*) "commTask", 2*4092, NULL, 2, NULL);
+	xTaskCreate(commTask, (char*) "commTask", 4092, NULL, 2, NULL);
 
 	/* -------------------------------------------------------------------- */
 	/*	Start the kalman filter task										*/
 	/* -------------------------------------------------------------------- */
-//	xTaskCreate(kalmanTask, (char*) "kalman", 4092, NULL, 2, NULL);
+	xTaskCreate(kalmanTask, (char*) "kalman", 4092, NULL, 2, NULL);
 
 	/* -------------------------------------------------------------------- */
 	/*	Start the mpc task filter task										*/
 	/* -------------------------------------------------------------------- */
-	xTaskCreate(testTask1, (char*) "testTask", 4092, NULL, 2, NULL);
 
-	xTaskCreate(testTask2, (char*) "testTask", 4092, NULL, 2, NULL);
+	xTaskCreate(mpcTask, (char*) "mpcTask", 4092, NULL, 2, NULL);
 
-//	xTaskCreate(mpcTask, (char*) "mpcTask", 2*4092, NULL, 2, NULL);
+//	xTaskCreate(testTask1, (char*) "testTask", 4092, NULL, 2, NULL);
+
+//	xTaskCreate(testTask2, (char*) "testTask", 4092, NULL, 2, NULL);
+
 
 
 	/* -------------------------------------------------------------------- */
 	/*	Start the FreeRTOS scheduler										*/
 	/* -------------------------------------------------------------------- */
 
-	usart4PutString("main end 1\n\r");
+	usart4PutString("main end ------\n\r");
 
 	vTaskStartScheduler();
 
