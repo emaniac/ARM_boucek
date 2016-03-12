@@ -147,8 +147,12 @@ void commTask(void *p) {
 				run_simulation();
 				break;
 
-			case 99:			//c
-				usart4PutChar(99);
+			case 'c':			//c
+				test_constraint();
+				break;
+
+			case 'i':
+				initializePrHandler();
 				break;
 
 			case 'x': 			//x

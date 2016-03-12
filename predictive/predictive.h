@@ -27,7 +27,6 @@ typedef struct {
 	float obstacle_y[MAX_BLOBS];
 	float obstacle_r[MAX_BLOBS];
 
-	float max_speed;	// not used yet.
 	int type;	// 1 for trajectory, 2 for reference, 0 for not initializes
 
 } prHandler;
@@ -54,7 +53,7 @@ int check(const matrix_float * A, const vector_float * B, const vector_float * u
 // edits u0 vector for feasible input such as A*u0 + B < 0
 void correct(const matrix_float * A, const vector_float * B, vector_float * u0);
 
-void my_constraint(float * x0, float * y0, float * radius, float * k, float * q, float * sig);
+void my_constraint(float x0, float y0, float radius, float * k, float * q, float * sig);
 
 // turns matrix [N x 2] into matrix [2*N x 1]
 void u2Uv(matrix_float * u);
@@ -73,3 +72,7 @@ void mountain_gradient(const matrix_float * A, const vector_float * B, const vec
 void cost_gradient(const matrix_float * H, const vector_float * c, const vector_float * u, vector_float * grad);
 
 void run_simulation();
+
+void test_mpc();
+
+void state();

@@ -61,8 +61,8 @@ vector_float pr_c  = {2*T, 0, (float*) pr_c_arr,  "pr_c"};
 
 float pr_Acx_arr[6*T];
 float pr_Acy_arr[6*T];
-float pr_Bcx_arr[T];
-float pr_Bcy_arr[T];
+float pr_Bcx_arr[2*T*T];
+float pr_Bcy_arr[2*T*T];
 float pr_Acy_x0_att[T];
 float pr_Acy_x0_arr[T];
 float pr_Av_x0_arr[6*T];
@@ -118,15 +118,14 @@ void test_handler(){	//h
 	usart_string_float_print("action_y = ", &action_y);
 }
 
-void state(){	//s
-	usart4PutString("----pr_handler state----\n\r");
+void state(){	// x
+	usart4PutString("----PR_HANDLER STATE----\n\r");
 
-	usart_string_float_print("error_x: ", pr_handler.error_x);
-	usart_string_float_print("error_y: ", pr_handler.error_y);
-
+	usart_string_float_print("error_x: ", &pr_handler.error_x);
+	usart_string_float_print("error_y: ", &pr_handler.error_y);
 
 	// obstacles
-	usart_string_float_print("obsticle_n: ", pr_handler.obstacle_n);
+	usart_string_int_print("obstacle_n: ", pr_handler.obstacle_n);
 
 	int i;
 	for(i = 0; i < pr_handler.obstacle_n; i++){
@@ -138,16 +137,18 @@ void state(){	//s
 
 	// trajectory reduced
 	usart4PutString("----Tr_reduced----\n\r");
-	float tmp_float = -1;
-	for(i = 1; i <= T; i++){
-		usart_string_int_print("---i = ", i);
 
-		tmp_float = matrix_float_get(pr_handler.Tr_reduced, i, 1);
-		usart_string_float_print("x = ", &tmp_float);
-
-		tmp_float = matrix_float_get(pr_handler.Tr_reduced, i, 4);
-		usart_string_float_print("y = ", &tmp_float);
-	}
+	matrix_float_print(pr_handler.Tr_reduced);
+//	float tmp_float = -1;
+//	for(i = 1; i <= T; i++){
+//		usart_string_int_print("---i = ", i);
+//
+//		tmp_float = matrix_float_get(pr_handler.Tr_reduced, i, 1);
+//		usart_string_float_print("x = ", &tmp_float);
+//
+//		tmp_float = matrix_float_get(pr_handler.Tr_reduced, i, 4);
+//		usart_string_float_print("y = ", &tmp_float);
+//	}
 
 	// set point
 	usart4PutString("set point:\n\r");
@@ -159,7 +160,7 @@ void test_mpc(){	// m
 	// fill data with packets: set points (S), blobs(B)
 	usart4PutString("---test_mpc() running---\n\r");
 	pr_handler.error_x = 0.00;
-	pr_handler.error_x = 0.00;
+	pr_handler.error_y = 0.00;
 
 	pr_handler.position_reference_x = -1;
 	pr_handler.position_reference_y = -1;
@@ -187,7 +188,7 @@ int pr_calculateMPC( prHandler * handler, float * action_x, float * action_y) {
 
 
 
-	int i, N = handler->obstacle_n;
+	int i, N = pr_handler.obstacle_n;
 
 	/* CONSTRAINTS */
 
@@ -202,14 +203,14 @@ int pr_calculateMPC( prHandler * handler, float * action_x, float * action_y) {
 		// for each obstacle
 		float Ac_tmp_arr[T*(2*T)];
 		float Bc_tmp_arr[T];
+
 		matrix_float Ac_tmp = {2*T, T, (float*) Ac_tmp_arr, "Ac_tmp - constraint matrix for one obstacle"};
 		vector_float Bc_tmp = {  T, 0, (float*) Bc_tmp_arr, "Bc_tmp - constraint matrix for one obstacle"};
 
-		float k, q, sig;
+		float k, q, sig, tmp_x0, tmp_y0, tmp_r;
 
 		for(i = 0; i < N; i++){
-			my_constraint(&(handler->obstacle_x[i]), &(handler->obstacle_y[i]), &(handler->obstacle_r[i]), &k, &q, &sig);
-
+			my_constraint(pr_handler.obstacle_x[i], pr_handler.obstacle_y[i], pr_handler.obstacle_r[i], &k, &q, &sig);
 
 			// needs to be coputed, changing every loop
 			constraint_matrixes(&pr_Av, &pr_Acx, &pr_Acy);
@@ -231,11 +232,13 @@ int pr_calculateMPC( prHandler * handler, float * action_x, float * action_y) {
 
 			matrix_float_set_submatrix(&Ac, &Ac_tmp, 1, i*T+1);
 			vector_float_set_subvector(&Bc, &Bc_tmp, i*T+1);
+
+			// bad
 		}
 	}
 
-	matrix_float_print(&Ac);
-	vector_float_print(&Bc);
+//	matrix_float_print(&Ac);
+//	vector_float_print(&Bc);
 
 //	reshape Tr
 	vector_float Tr_vec = {T*6, 0, (float*) pr_Tr_red_arr, "Tr_vec - reshaped pr_Tr_red, pr_calculateMPC()"};
@@ -264,13 +267,17 @@ void prepare(){
 	matrix_float_set_zero(&pr_Tr_full);
 }
 
-prHandler * initializePrHandler() {
+prHandler * initializePrHandler() {	// i
+
 	pr_handler.x0 = &pr_x0;
 	pr_handler.Tr_reduced = &pr_Tr_red;	// size [T x 2]
 	pr_handler.Tr_full = &pr_Tr_full;
+	vector_float_set_zero(pr_handler.x0);
+	matrix_float_set_zero(pr_handler.Tr_reduced);
+	matrix_float_set_zero(pr_handler.Tr_full);
 
-	pr_handler.error_x = 0;
-	pr_handler.error_y = 0;
+	pr_handler.error_x = -1;
+	pr_handler.error_y = -1;
 
 	pr_handler.position_reference_x = 0;
 	pr_handler.position_reference_y = 0;
@@ -279,6 +286,13 @@ prHandler * initializePrHandler() {
 	pr_handler.position_y = 0;
 
 	pr_handler.obstacle_n = -1;
+
+	int i;
+	for(i = 0; i < MAX_BLOBS; i++){
+		pr_handler.obstacle_x[i] = -1;
+		pr_handler.obstacle_y[i] = -1;
+		pr_handler.obstacle_r[i] = -1;
+	}
 
 	pr_handler.type = -1;	// 1 for trajectory, 2 for reference, -1 for not initializes
 	return &pr_handler;
@@ -298,7 +312,6 @@ void compute_Tr_reduced(prHandler * handler){
 void create_Tr_reference(prHandler * handler){
 	// done, tested
 	// computes relative trajectory from positions
-	usart4PutString("------create_Tr_reference() running 2.------\n\r");
 
 	float x0 = handler->position_x;
 	float y0 = handler->position_y;
@@ -340,12 +353,10 @@ void constraint_matrixes(const matrix_float * Av, matrix_float * Acx, matrix_flo
 		usart4PutString("ERROR in function constraint_matrixes(), wrong dimensions\n\r");
 		return;
 	}
-
 	float tmp;
 	int c, l;
-	int C = (*Av).width;
-	int L = (*Av).height/6;
-
+	int C = Av->width;
+	int L = Av->height/6;
 	for(l = 1; l <= L; l++){
 		for(c = 1; c <= C; c++){
 			tmp = matrix_float_get(Av, l*6-5, c);
@@ -358,7 +369,6 @@ void constraint_matrixes(const matrix_float * Av, matrix_float * Acx, matrix_flo
 
 
 void test_predictive(){		//p
-	usart4PutString("Predictive class running 2.\n\r");
 	float B_arr[] = {50, 60, 70};
 	float u_arr[] = {4, 5, 6};
 	float V_arr[] = {1, 2, 3, 4};
@@ -446,14 +456,14 @@ void correct(const matrix_float * A, const vector_float * B, vector_float * u0){
 	}
 }
 
-void my_constraint(float * x0, float * y0, float * radius, float * k, float * q, float * sig){
+void my_constraint(const float x0, const float y0, const float radius, float * k, float * q, float * sig){
 	// working
 
 	float d, bx, by;
 
-	float fx0 = *(x0);				// crazy
-	float fy0 = *(y0);				// crazy
-	float fradius = *(radius);		// crazy
+	float fx0 = x0;				// crazy
+	float fy0 = y0;				// crazy
+	float fradius = radius;		// crazy
 
 	d = sqrt(fx0*fx0+fy0*fy0);
 	bx = fx0-fradius*fx0/d;
@@ -461,7 +471,7 @@ void my_constraint(float * x0, float * y0, float * radius, float * k, float * q,
 
 	*k = -((float)fx0/(float)fy0);
 
-	if(*y0 > 0){
+	if(y0 > 0){
 		*sig = 1;
 	} else {
 		*sig = -1;
