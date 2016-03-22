@@ -7,11 +7,16 @@
 #include "CMatrixLib.h"
 #include "system.h"
 
+#define OUTPUT 0
+#define OBSTACLES 1			// if recieving obstacles
+#define COMPUTE_ERROR 0		// take in consideration ERROR
+
 typedef struct {
 
 	vector_float * x0;
 	matrix_float * Tr_reduced;	// size [T x 6], relative
 	matrix_float * Tr_full;		// size [T x 2], absolute
+	vector_float * Uv;
 
 	float error_x;
 	float error_y;
@@ -76,3 +81,5 @@ void run_simulation();
 void test_mpc();
 
 void state();
+
+void reset_Uv();

@@ -7,9 +7,9 @@
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
-// #define MIKROKOPTER_KK2	1
+#define MIKROKOPTER_KK2	1
 // #define TRICOPTER		1
-#define PRASE	1
+//#define PRASE	1
 
 #ifdef	MIKROKOPTER_KK2
 

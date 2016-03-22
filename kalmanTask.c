@@ -12,7 +12,6 @@
 #include "config.h"
 
 void kalmanTask(void *p) {
-	usart4PutString("kalmanTask() start\r\n");
 	kalmanHandler_t * aileronKalmanHandler = initializeAileronKalman();
 	kalmanHandler_t * elevatorKalmanHandler = initializeElevatorKalman();
 
@@ -43,7 +42,7 @@ void kalmanTask(void *p) {
 	/* Messages between tasks												*/
 	/* -------------------------------------------------------------------- */
 	comm2kalmanMessage_t comm2kalmanMessage;
-	kalman2mpcMessage_t kalman2mpcMessage;
+	kalman2mpcMessage_t  kalman2mpcMessage;
 	kalman2commMessage_t kalman2commMesasge;
 	resetKalmanMessage_t resetKalmanMessage;
 

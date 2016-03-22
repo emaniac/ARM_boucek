@@ -44,32 +44,6 @@ int rekurze(int i){
 
 
 
-void testTask1(void) {
-//	rekurze(4);
-
-	vTaskDelay(100);
-	usart4PutString("testTask 1() start 1\n\r");
-	int i = 0;
-
-	while(1) {
-		vTaskDelay(100);
-//		usart_string_int_print("testTask1() while ", i++);
-	}
-}
-
-void testTask2(void) {
-//	rekurze(4);
-
-	vTaskDelay(100);
-	usart4PutString("testTask 2() start 1\n\r");
-	int i = 0;
-
-	while(1) {
-		vTaskDelay(100);
-//		usart_string_int_print("testTask2() while ", i++);
-	}
-}
-
 
 int main(void) {
 
@@ -95,17 +69,13 @@ int main(void) {
 
 	xTaskCreate(mpcTask, (char*) "mpcTask", 4092, NULL, 2, NULL);
 
-//	xTaskCreate(testTask1, (char*) "testTask", 4092, NULL, 2, NULL);
-
-//	xTaskCreate(testTask2, (char*) "testTask", 4092, NULL, 2, NULL);
-
 
 
 	/* -------------------------------------------------------------------- */
 	/*	Start the FreeRTOS scheduler										*/
 	/* -------------------------------------------------------------------- */
 
-	usart4PutString("main end ------\n\r");
+	usart4PutString("--main done ------\n\r");
 
 	vTaskStartScheduler();
 

@@ -192,10 +192,10 @@ void usart_string_float_print(const char * text, const float * number) {
 	// tested
 
 	usart4PutString(text);
-	vTaskDelay(5);
+	vTaskDelay(1);
 	char temp[60];
 	sprintf(temp, "%12.2f", (float)(* number));
-	vTaskDelay(5);
+	vTaskDelay(1);
 	usart4PutString(temp);
 	usart4PutString("\n\r");
 }

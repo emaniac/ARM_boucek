@@ -2,6 +2,8 @@
  * commTask.c
  *
  *  Author: Tomas Baca
+ *
+ *  doesn't change coordinate system
  */
 
 #include "commTask.h"
@@ -80,9 +82,13 @@ void sendChar(const char var, char * crc) {
 
 matrix_float velkaMatice;
 float velkeeePole[10000];
+float cam_count_r = 0;
+float cam_count_s = 0;
+float mess_counter = 0;
+float mpc_counter = 0;
+float kalman_counter = 0;
 
 void commTask(void *p) {
-	usart4PutString("commTask() start\r\n");
 	char crcOut = 0;
 
 	// message from mpcTask
@@ -114,7 +120,6 @@ void commTask(void *p) {
 
 	matrix_float_set_all(&velkaMatice, 3.141592653);
 
-
 	while (1) {
 
 
@@ -122,57 +127,6 @@ void commTask(void *p) {
 		/*	Receive char from usart												*/
 		/* -------------------------------------------------------------------- */
 		if (xQueueReceive(usartRxQueue, &inChar, 0)) {
-
-			switch(inChar){
-
-			case 81:			//Q
-				matrix_float_times(&velkaMatice, 2);
-				matrix_float_print(&velkaMatice);
-				velkaMatice.data++;
-				break;
-
-			case 112:			//p
-				test_predictive();
-				break;
-
-			case 116:			//t
-//				test_check();
-				break;
-
-			case 110:			//n
-//				usart_string_float_print("usart print printing 3 : ", num_honza);	//test of usart_print()
-				break;
-
-			case 114:			//r
-				run_simulation();
-				break;
-
-			case 'c':			//c
-				test_constraint();
-				break;
-
-			case 'i':
-				initializePrHandler();
-				break;
-
-			case 'x': 			//x
-				state();
-				break;
-
-			case 'm': 			//m
-				test_mpc();
-				break;
-
-			case 104: 			//h
-				test_handler();
-				break;
-
-			default:			//blikani
-				break;
-			}
-
-
-
 
 			if (receivingMessage) {
 
@@ -239,14 +193,18 @@ void commTask(void *p) {
 		/* -------------------------------------------------------------------- */
 		if (messageReceived) {
 
-
 			int idx = 0;
-
+			mess_counter++;
 			//  read the message ID
 			char messageId = readChar(messageBuffer, &idx);
 
-			if (messageId == '1') {
 
+			if (messageId == '1') {
+				cam_count_r++;
+				if(OUTPUT) {
+					usart_string_float_print(".rk1.\n\r", &kalman_counter);
+					kalman_counter++;
+				}
 				comm2kalmanMessage_t mes;
 
 				tempFloat = readFloat(messageBuffer, &idx);
@@ -266,8 +224,10 @@ void commTask(void *p) {
 					mes.aileronInput = (float) tempInt;
 
 				xQueueSend(comm2kalmanQueue, &mes, 0);
-
 			} else if (messageId == '2') {
+				reset_Uv();
+
+				if(OUTPUT) usart4PutString(".rk2.");
 
 				resetKalmanMessage_t mes;
 
@@ -285,25 +245,27 @@ void commTask(void *p) {
 
 				xQueueSend(resetKalmanQueue, &mes, 0);
 
+
 			} else if (messageId == '3') {
+				reset_Uv();
+
+				if(OUTPUT) usart4PutString(".rk3.");
 
 				resetKalmanMessage_t mes;
 
 				tempFloat = readFloat(messageBuffer, &idx);
 				if (fabs(tempFloat) < 200)
 					mes.elevatorPosition = tempFloat;
-				else
-					continue;
 
 				tempFloat = readFloat(messageBuffer, &idx);
 				if (fabs(tempFloat) < 200)
 					mes.aileronPosition = tempFloat;
-				else
-					continue;
 
 				xQueueSend(setKalmanQueue, &mes, 0);
 
 			} else if (messageId == 's') {
+
+				if(OUTPUT) usart4PutString(".rs.\n\r");
 
 				comm2mpcMessage_t comm2mpcMessage;
 
@@ -319,7 +281,12 @@ void commTask(void *p) {
 
 				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
 
+
 			} else if (messageId == 't') {
+
+
+				if(OUTPUT) usart4PutString(".rt.\n\r");
+
 
 				comm2mpcMessage_t comm2mpcMessage;
 
@@ -344,9 +311,11 @@ void commTask(void *p) {
 
 				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
 
+
 			} else if (messageId == 'B') {	// Blobs
-				usart4PutString("\n\r");
-				usart4PutString("BLOB-commTask\n\r");
+				// recieves [n x y r x y r...] in Tom's coordinate system
+
+				if(OUTPUT) usart4PutString(".br.\n\r");
 
 				comm2mpcMessage_t comm2mpcMessage;
 
@@ -372,8 +341,48 @@ void commTask(void *p) {
 						comm2mpcMessage.obstacle_r[i] = tempFloat;
 				}
 
-				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);	// doesnt work
-			}
+				xQueueSend(comm2mpcQueue, &comm2mpcMessage, 0);
+
+			} else if (messageId == 'U' && OUTPUT) {	// USER INPUT
+				usart4PutString("MESSAGE RECIEVING ");
+
+					char mess_char = readChar(messageBuffer, &idx);
+
+					switch(mess_char){
+
+						case 81:			//Q
+							usart4PutString("Q\n\r");
+							matrix_float_times(&velkaMatice, 2);
+							matrix_float_print(&velkaMatice);
+							velkaMatice.data++;
+							break;
+
+						case 'i':
+							usart4PutString("i\n\r");
+							initializePrHandler();
+							break;
+
+						case 'x': 			//x
+							usart4PutString("x\n\r");
+							state();
+							break;
+
+						case 'm': 			//m
+							usart4PutString("m\n\r");
+							test_mpc();
+							break;
+
+						case 'h': 			//h
+							usart4PutString("h\n\r");
+							test_handler();
+							break;
+
+						default:
+							usart4PutChar(mess_char);
+							break;
+					}
+
+				}
 
 			messageReceived = 0;
 		}
@@ -383,6 +392,7 @@ void commTask(void *p) {
 		/* -------------------------------------------------------------------- */
 		if (xQueueReceive(mpc2commQueue, &mpcMessage, 0)) {
 
+
 			/* -------------------------------------------------------------------- */
 			/*	Send message to xMega												*/
 			/* -------------------------------------------------------------------- */
@@ -390,14 +400,18 @@ void commTask(void *p) {
 			// clear the crc
 			crcOut = 0;
 			sendChar('a', &crcOut);			// this character initiates the transmission
-			sendChar(1 + 4 + 2*4, &crcOut);			// this will be the size of the message
+			sendChar(1 + 2*2 + 2*4, &crcOut);			// this will be the size of the message
 
 			sendChar('1', &crcOut);			// id of the message
 			sendInt16((int16_t) mpcMessage.elevatorOutput, &crcOut);
 			sendInt16((int16_t) mpcMessage.aileronOutput, &crcOut);
 
-			sendFloat(mpcMessage.elevatorSetpoint, &crcOut);
-			sendFloat(mpcMessage.aileronSetpoint, &crcOut);
+			mpc_counter++;
+
+			sendFloat(cam_count_r, &crcOut);
+			sendFloat(mpc_counter, &crcOut);
+//			sendFloat(mpcMessage.elevatorSetpoint, &crcOut);
+//			sendFloat(mpcMessage.aileronSetpoint, &crcOut);
 
 			sendChar(crcOut, &crcOut);
 		}
@@ -410,7 +424,7 @@ void commTask(void *p) {
 			/* -------------------------------------------------------------------- */
 			/*	Send message to xMega												*/
 			/* -------------------------------------------------------------------- */
-
+			cam_count_s++;
 			// clear the crc
 			crcOut = 0;
 			sendChar('a', &crcOut);			// this character initiates the transmission

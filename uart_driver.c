@@ -113,7 +113,6 @@ portBASE_TYPE usart4PutChar(char ch) {
 }
 
 void usart4PutString(volatile char *s) {
-
 	while (*s) {
 
 		usart4PutChar(*s);
