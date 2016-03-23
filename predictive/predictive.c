@@ -443,8 +443,8 @@ void mountain_gradient(const matrix_float * A, const vector_float * B, const vec
 	vector_float W = {N, 0, (float*) W_arr, "W"};
 
 
-	float tmp_arr[N];
-	vector_float tmp = {N, 0, (float*) tmp_arr, "W"};
+//	float tmp_arr[N];
+//	vector_float tmp = {N, 0, (float*) tmp_arr, "W"};
 	vector_float_set_zero(grad);
 
 	for(i = 1; i <= B->length; i++){
@@ -560,6 +560,7 @@ void state(){	// x
 
 
 void test_predictive(){		//p
+	/*
 	float B_arr[] = {50, 60, 70};
 	float u_arr[] = {4, 5, 6};
 	float V_arr[] = {1, 2, 3, 4};
@@ -573,6 +574,7 @@ void test_predictive(){		//p
 	matrix_float_print(&A);
 	matrix_float_add_diag(&A, &Get_test);
 	matrix_float_print(&A);
+	*/
 }
 
 void reset_Uv(){

@@ -71,7 +71,6 @@ void mpcTask(void *p) {
 				if(OBSTACLES){
 					// transforms coordinates
 					int i, j;
-					float step;
 					int granularity = 50;
 					pr_handler->type = 2;
 

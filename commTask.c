@@ -408,10 +408,10 @@ void commTask(void *p) {
 
 			mpc_counter++;
 
-			sendFloat(cam_count_r, &crcOut);
-			sendFloat(mpc_counter, &crcOut);
-//			sendFloat(mpcMessage.elevatorSetpoint, &crcOut);
-//			sendFloat(mpcMessage.aileronSetpoint, &crcOut);
+//			sendFloat(cam_count_r, &crcOut);
+//			sendFloat(mpc_counter, &crcOut);
+			sendFloat(mpcMessage.elevatorSetpoint, &crcOut);
+			sendFloat(mpcMessage.aileronSetpoint, &crcOut);
 
 			sendChar(crcOut, &crcOut);
 		}
