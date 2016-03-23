@@ -7,7 +7,7 @@
 
 
 #include "CMatrixLib.h"
-#define T 21
+#define T 12
 #define T_MAX 200			// last value in pr_block
 
 const float pr_block_arr[T];	//has to fit
